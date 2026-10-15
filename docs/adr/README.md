@@ -1,0 +1,43 @@
+# Architecture decision records
+
+Each file records one decision: its context, the decision, the alternatives considered and the consequences. The design documents ([ARCHITECTURE.md](../ARCHITECTURE.md), [LIFECYCLE.md](../LIFECYCLE.md), [MANIFEST_SPEC.md](../MANIFEST_SPEC.md), [ROADMAP.md](../ROADMAP.md)) cite these records by number.
+
+Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (the design default until the owner settles owner decision OD-n, whose options are recorded in the owner's private notes), **Superseded by ADR-NNNN** (none yet). **Accepted (revised 2026-10-14)** marks the ADRs that the owner's clarification of host scope (any host that runs Docker and Compose, not one appliance line) revised in place on the day they were accepted, before any implementation; each one's status line says what changed. From then on, rule 3 below applies without exception.
+
+## Index
+
+| ADR | Title | Status | Summary |
+|---|---|---|---|
+| [0001](0001-separate-repository-rebuilt-from-scratch.md) | A separate repository, rebuilt from scratch | Accepted | New public repository with no compatibility with the predecessor controller; no data migration. |
+| [0002](0002-synthesis-basis.md) | Synthesis basis: lean structure, safety floors, DSM-native execution | Accepted | The `lean` proposal as the base, with `safety`'s floors and `container`'s DSM execution grafted on (execution model designed against DSM; platform-neutral since ADR-0025). |
+| [0003](0003-name-namespaces-and-brand-module.md) | Name, namespaces and one brand module | Accepted (revised 2026-10-14) | Ingat, `io.github.lisahq.ingat.` labels, `ghcr.io/lisahq/ingat`, generic default roots; every identifier lives in one brand module. |
+| [0004](0004-runtime-python-in-pinned-image.md) | Runtime: Python 3.13 inside a pinned image, run by a POSIX wrapper | Accepted (revised 2026-10-14) | One multi-arch image (`linux/amd64`, `linux/arm64`) pins Python, docker CLI and Compose; a 20-line `sh` wrapper runs it. |
+| [0005](0005-detached-executor-container.md) | Operations that change Docker run in a detached executor container | Accepted | Mutations run in a detached `--rm` executor, so a lost session never stops them half-way. |
+| [0006](0006-compose-app-files-plus-override.md) | Compose runs on the app's own files plus a generated override | Accepted | Never execute from a re-rendered model; the override adds pins, stable labels and logging. |
+| [0007](0007-image-identity-pinned-by-id.md) | Image identity: pinned by ID, ledger, no image removal before M3 | Accepted | Services run the recorded image ID; a write-once ledger keeps provenance. |
+| [0008](0008-filesystem-layout.md) | Filesystem layout: plain POSIX root, root-written backups root | Accepted (revised 2026-10-14) | State in a `root:root 0700` directory; bundles copied then renamed into a backups root only root writes (a shared folder on DSM). |
+| [0009](0009-app-manifest-in-app-repository.md) | The app manifest lives in the app repository; TOML; closed vocabularies | Accepted | `ingat.toml` read from the deployed commit; closed sets of steps, task modes, probes, variables. |
+| [0010](0010-one-data-strategy-app-native-tasks.md) | One data strategy in v1: app-native tasks | Accepted | Apps back up and restore with their own tasks; Ingat owns staging, sealing and verification. |
+| [0011](0011-data-generations-and-isolated-restores.md) | Data generations; restores and drills in isolated projects | Accepted | Restores fill a new generation in an isolated project and switch a pointer; drills use throwaway projects. |
+| [0012](0012-step-model-and-execution-semantics.md) | Step model and execution semantics | Accepted | One executor over typed steps, owned task containers, orphan check, scoped auto-abandon. |
+| [0013](0013-approval-classes-and-plan-files.md) | Approval classes A-D and plan files | Accepted, pending OD-10 | Read-only, unattended, plan-hash and terminal-only destructive classes; agents never get class D. |
+| [0014](0014-tiered-version-gate.md) | Version gate in tiers, generated from CI, without override | Accepted (revised 2026-10-14) | Read-only anywhere, backups on untested engines, everything else only on tested Engine lines with a certification of the host's platform build, on every host. |
+| [0015](0015-probes-and-store-readiness.md) | Probes: three kinds, stability windows, any-of values, store readiness | Accepted | `health`, `exec` and `http` probes with stability windows; data stores proven ready before use. |
+| [0016](0016-bundle-format-ids-and-verification.md) | Bundle format, ids and verification levels | Accepted | Directory bundles hashed by `SHA256SUMS`, ids from app naming templates, two verification levels. |
+| [0017](0017-preserve-before-replace.md) | Preserve before replace on every writer or data image change | Accepted, pending OD-4 | Every writer or data image change stops writers and seals a verified pre-change bundle first. |
+| [0018](0018-app-environment-control-and-holds.md) | App environment control and holds | Accepted | Declared env keys with owner-gated, forbidden and tool-managed keys; holds for isolated runs. |
+| [0019](0019-secrets.md) | Secrets | Accepted | Secrets only as checked files, redacted everywhere, never in bundles. |
+| [0020](0020-exclusive-environments-default-refusal.md) | Exclusive environments default to refusal | Accepted, pending OD-5 | A production instance refuses to share a host with another instance of the same app. |
+| [0021](0021-testing-evidence-and-scope-guardrails.md) | Testing, evidence and scope guardrails | Accepted (revised 2026-10-14) | Real Docker on every push (an arm64 lane included), evidence only from CI and host certifications, line budgets. |
+| [0022](0022-delegated-concerns.md) | Delegated concerns | Accepted (revised 2026-10-14) | TLS, off-host copies, scheduling and notification stay with the platform's tools, outside Ingat. |
+| [0023](0023-record-compatibility-within-state-schema.md) | Record compatibility within a state schema | Accepted | Additive optional record changes within a schema; anything else bumps it with a migration. |
+| [0024](0024-adoption-by-payload-import.md) | Adoption of a foreign deployment by payload import and restore, never in place | Accepted (planned M4) | Foreign deployments are adopted from the app's own backup payload; no foreign object is touched. |
+| [0025](0025-host-baseline.md) | Host support tiers and the first platform profile (Synology DSM 7.4) | Accepted (revised 2026-10-14) | Any Linux Docker host: support tier 1 (upstream Engine on CI-tested lines), support tier 2 (vendor appliances certified per platform build, Synology DSM 7.4 with Container Manager 24.0.2 first), an explicit unsupported list; capabilities, never platform branches; one multi-arch image; logging and CPU-limit rules. |
+
+## Adding an ADR
+
+1. Write one when a decision is needed: a new dependency, a new step type, task mode, probe kind or template variable (with the consumer need it serves), a spike fallback, a re-plan after a milestone passes 1.5 × its line estimate, or a generality failure ([ARCHITECTURE.md](../ARCHITECTURE.md) §11.3).
+2. Take the next free number and name the file `NNNN-short-kebab-title.md`. Start with `# ADR-NNNN <Title>`, a `**Status:**` line, then the sections `Context`, `Decision`, `Alternatives` and `Consequences`.
+3. Never rewrite an accepted ADR's decision. A change is a new ADR that names the one it supersedes; the old one's status becomes `Superseded by ADR-NNNN`.
+4. Add a row to the index above in the same change, and update the design documents that cite the decision.
+5. Follow the public content rule ([CLAUDE.md](../../CLAUDE.md) §5): generic content only, no consumer names, host values or private references; describe a consumer by its role (the PostgreSQL consumer, the SQLite consumer) or by its fixture (`fx-pg`, `fx-lite`, `fx-web`).
