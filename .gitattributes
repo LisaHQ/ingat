@@ -1,0 +1,28 @@
+# Normalize all text files to LF in the repository and in the working tree.
+* text=auto eol=lf
+
+# Windows-only helper scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Never let scripts and container/config files drift, even on Windows checkouts.
+*.sh       text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.py       text eol=lf
+Dockerfile text eol=lf
+
+# Binary assets: no line-ending conversion or text diffs.
+*.xlsx  binary
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
