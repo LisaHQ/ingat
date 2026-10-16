@@ -1,0 +1,358 @@
+{
+  "configs": {
+    "conf": {
+      "file": "/etc/shadow",
+      "name": "evil_conf"
+    }
+  },
+  "name": "evil",
+  "networks": {
+    "default": {
+      "ipam": {},
+      "name": "evil_default"
+    },
+    "extnet": {
+      "external": true,
+      "ipam": {},
+      "name": "foreign-net"
+    }
+  },
+  "secrets": {
+    "stolen": {
+      "file": "/srv/ingat/instances/other/secrets/token",
+      "name": "evil_stolen"
+    }
+  },
+  "services": {
+    "build": {
+      "build": {
+        "context": "/etc",
+        "dockerfile": "Dockerfile"
+      },
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      }
+    },
+    "capadd": {
+      "cap_add": [
+        "SYS_ADMIN"
+      ],
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      }
+    },
+    "cgparent": {
+      "cgroup_parent": "/evil",
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      }
+    },
+    "cpus": {
+      "command": null,
+      "cpus": 0.5,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      }
+    },
+    "cpusdeploy": {
+      "command": null,
+      "deploy": {
+        "placement": {},
+        "resources": {
+          "limits": {
+            "cpus": 1.5
+          }
+        }
+      },
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      }
+    },
+    "dev": {
+      "command": null,
+      "devices": [
+        {
+          "permissions": "rwm",
+          "source": "/dev/fuse",
+          "target": "/dev/fuse"
+        }
+      ],
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      }
+    },
+    "devrule": {
+      "command": null,
+      "device_cgroup_rules": [
+        "c 1:3 mr"
+      ],
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      }
+    },
+    "extuse": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "extnet": null
+      },
+      "volumes": [
+        {
+          "source": "extvol",
+          "target": "/x",
+          "type": "volume",
+          "volume": {}
+        },
+        {
+          "source": "optvol",
+          "target": "/y",
+          "type": "volume",
+          "volume": {}
+        }
+      ]
+    },
+    "ipchost": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "ipc": "host",
+      "networks": {
+        "default": null
+      }
+    },
+    "labels": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "labels": {
+        "io.github.lisahq.ingat.instance": "other",
+        "org.example": "fine"
+      },
+      "networks": {
+        "default": null
+      }
+    },
+    "named": {
+      "command": null,
+      "container_name": "fixed-name",
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      }
+    },
+    "nethost": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "network_mode": "host"
+    },
+    "outside": {
+      "command": null,
+      "configs": [
+        {
+          "source": "conf"
+        }
+      ],
+      "entrypoint": null,
+      "env_file": [
+        {
+          "path": "/etc/evil.env"
+        }
+      ],
+      "image": "x:1",
+      "networks": {
+        "default": null
+      },
+      "secrets": [
+        {
+          "source": "stolen",
+          "target": "/run/secrets/stolen"
+        }
+      ],
+      "volumes": [
+        {
+          "bind": {},
+          "read_only": true,
+          "source": "/etc",
+          "target": "/x",
+          "type": "bind"
+        },
+        {
+          "bind": {},
+          "source": "/srv/ingat/cache/src/0123456789abcdef0123456789abcdef01234567/rw",
+          "target": "/rw",
+          "type": "bind"
+        },
+        {
+          "bind": {},
+          "read_only": true,
+          "source": "/srv/ingat/cache/src/0123456789abcdef0123456789abcdef01234567/ro",
+          "target": "/ro",
+          "type": "bind"
+        }
+      ]
+    },
+    "pidhost": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      },
+      "pid": "host"
+    },
+    "ports": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "8080",
+          "target": 80
+        },
+        {
+          "host_ip": "0.0.0.0",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "8081",
+          "target": 81
+        },
+        {
+          "host_ip": "127.0.0.1",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "19999",
+          "target": 82
+        },
+        {
+          "host_ip": "127.0.0.1",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "target": 83
+        }
+      ]
+    },
+    "priv": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      },
+      "privileged": true
+    },
+    "sock": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "bind": {},
+          "read_only": true,
+          "source": "/var/run/docker.sock",
+          "target": "/var/run/docker.sock",
+          "type": "bind"
+        },
+        {
+          "bind": {},
+          "read_only": true,
+          "source": "/",
+          "target": "/host",
+          "type": "bind"
+        }
+      ]
+    },
+    "unconf": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      },
+      "security_opt": [
+        "seccomp:unconfined",
+        "apparmor=unconfined"
+      ]
+    },
+    "userns": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      },
+      "userns_mode": "host"
+    },
+    "utshost": {
+      "command": null,
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      },
+      "uts": "host"
+    },
+    "volfrom": {
+      "command": null,
+      "depends_on": {
+        "priv": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "entrypoint": null,
+      "image": "x:1",
+      "networks": {
+        "default": null
+      },
+      "volumes_from": [
+        "priv",
+        "container:foreign"
+      ]
+    }
+  },
+  "volumes": {
+    "extvol": {
+      "external": true,
+      "name": "foreign-vol"
+    },
+    "optvol": {
+      "driver_opts": {
+        "device": "/etc",
+        "o": "bind",
+        "type": "none"
+      },
+      "labels": {
+        "io.github.lisahq.ingat.store": "x"
+      },
+      "name": "evil_optvol"
+    }
+  }
+}

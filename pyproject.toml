@@ -1,0 +1,23 @@
+[project]
+name = "ingat"
+version = "0.1.0"
+description = "Deploy, update, back up, verify and restore Docker Compose applications on one host."
+license = "Apache-2.0"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["SIM905"]
+
+[tool.mypy]
+python_version = "3.13"
+platform = "linux"
+strict = true
+mypy_path = "src"
+files = ["src/ingat"]

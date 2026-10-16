@@ -1,0 +1,24 @@
+# fx-lite-secrets: the fx-lite fixture's Compose file plus the generated file secret `canary` (bound read-only at
+# /run/secrets/canary) and a first log line that prints the app env secret and the file secret, so that every
+# reader of the service log (`logs`) must redact both. Used only by tests/docker/test_it_secrets.py.
+services:
+  app:
+    image: ${FXLITE_IMAGE:?}
+    entrypoint: ["env"]
+    command: ["sh", "-c", 'echo canary-log "$$MAIL_PASSWORD" "$$(cat /run/secrets/canary)"; exec fx-lite serve']
+    user: "10001:10001"
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    volumes: ["${FXLITE_DATA_DIR:?}:/data"]
+    env_file: ["${FXLITE_ENV_FILE:?}"]
+    environment:
+      DATA_DIR: /data
+      RELEASE: ${FXLITE_RELEASE:?}
+    secrets: [canary]
+    ports: ["127.0.0.1:${FXLITE_PORT:?}:3000"]
+    restart: unless-stopped
+secrets:
+  canary:
+    file: ${FXLITE_SECRETS:?}/canary

@@ -1,0 +1,277 @@
+{
+  "name": "pg-staging",
+  "networks": {
+    "edge": {
+      "ipam": {
+        "config": [
+          {
+            "subnet": "10.200.1.0/24"
+          }
+        ]
+      },
+      "labels": {
+        "io.github.lisahq.ingat.instance": "pg-staging"
+      },
+      "name": "pg-staging_edge"
+    },
+    "internal": {
+      "internal": true,
+      "ipam": {},
+      "labels": {
+        "io.github.lisahq.ingat.instance": "pg-staging"
+      },
+      "name": "pg-staging_internal"
+    }
+  },
+  "secrets": {
+    "app_password": {
+      "file": "/srv/ingat/instances/pg-staging/secrets/app_password",
+      "name": "pg-staging_app_password"
+    },
+    "maintenance_password": {
+      "file": "/srv/ingat/instances/pg-staging/secrets/maintenance_password",
+      "name": "pg-staging_maintenance_password"
+    },
+    "postgres_password": {
+      "file": "/srv/ingat/instances/pg-staging/secrets/postgres_password",
+      "name": "pg-staging_postgres_password"
+    }
+  },
+  "services": {
+    "backend": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "command": null,
+      "deploy": {
+        "placement": {},
+        "resources": {
+          "limits": {
+            "cpus": 0.5,
+            "memory": "536870912"
+          }
+        }
+      },
+      "entrypoint": null,
+      "environment": {
+        "DB_HOST": "db",
+        "WORKERS": "2"
+      },
+      "image": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "init": true,
+      "labels": {
+        "io.github.lisahq.ingat.instance": "pg-staging",
+        "io.github.lisahq.ingat.role": "app"
+      },
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "networks": {
+        "internal": null
+      },
+      "pull_policy": "never",
+      "read_only": true,
+      "secrets": [
+        {
+          "source": "app_password",
+          "target": "/run/secrets/app_password"
+        }
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "tmpfs": [
+        "/tmp"
+      ],
+      "user": "10001:10001",
+      "volumes": [
+        {
+          "read_only": true,
+          "source": "/srv/ingat/cache/src/0123456789abcdef0123456789abcdef01234567/config",
+          "target": "/etc/app",
+          "type": "bind"
+        }
+      ]
+    },
+    "db": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "command": null,
+      "cpus": 0.5,
+      "entrypoint": null,
+      "environment": {
+        "POSTGRES_PASSWORD_FILE": "/run/secrets/postgres_password",
+        "POSTGRES_USER": "fx_owner"
+      },
+      "image": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "init": true,
+      "labels": {
+        "io.github.lisahq.ingat.instance": "pg-staging",
+        "io.github.lisahq.ingat.role": "app"
+      },
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "mem_limit": "536870912",
+      "networks": {
+        "internal": null
+      },
+      "pids_limit": 256,
+      "pull_policy": "never",
+      "read_only": true,
+      "secrets": [
+        {
+          "source": "postgres_password",
+          "target": "/run/secrets/postgres_password"
+        }
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "shm_size": "268435456",
+      "stop_grace_period": "1m0s",
+      "tmpfs": [
+        "/tmp",
+        "/run/postgresql"
+      ],
+      "user": "999:999",
+      "volumes": [
+        {
+          "source": "postgres_data",
+          "target": "/var/lib/postgresql/data",
+          "type": "volume"
+        }
+      ]
+    },
+    "ops": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "command": null,
+      "cpus": 0.5,
+      "entrypoint": null,
+      "image": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "labels": {
+        "io.github.lisahq.ingat.instance": "pg-staging",
+        "io.github.lisahq.ingat.role": "app"
+      },
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "networks": {
+        "internal": null
+      },
+      "profiles": [
+        "ops"
+      ],
+      "pull_policy": "never",
+      "read_only": true,
+      "secrets": [
+        {
+          "source": "maintenance_password",
+          "target": "/run/secrets/maintenance_password"
+        }
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "10001:10001",
+      "volumes": [
+        {
+          "bind": {},
+          "source": "/srv/ingat/instances/pg-staging/placeholder",
+          "target": "/backup",
+          "type": "bind"
+        }
+      ]
+    },
+    "tool": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "command": null,
+      "entrypoint": null,
+      "image": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "labels": {
+        "io.github.lisahq.ingat.instance": "pg-staging",
+        "io.github.lisahq.ingat.role": "app"
+      },
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "network_mode": "none",
+      "profiles": [
+        "ops"
+      ],
+      "pull_policy": "never",
+      "read_only": true
+    },
+    "web": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "PROXY_ADDRESS": ""
+      },
+      "image": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "labels": {
+        "io.github.lisahq.ingat.instance": "pg-staging",
+        "io.github.lisahq.ingat.role": "app"
+      },
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "networks": {
+        "edge": null,
+        "internal": null
+      },
+      "ports": [
+        {
+          "host_ip": "127.0.0.1",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "20081",
+          "target": 8080
+        }
+      ],
+      "pull_policy": "never",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "tmpfs": [
+        "/tmp"
+      ],
+      "user": "10001:10001"
+    }
+  },
+  "volumes": {
+    "postgres_data": {
+      "external": true,
+      "name": "pg-staging_pgdata_g1"
+    }
+  }
+}

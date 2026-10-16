@@ -33,6 +33,11 @@ Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (th
 | [0023](0023-record-compatibility-within-state-schema.md) | Record compatibility within a state schema | Accepted | Additive optional record changes within a schema; anything else bumps it with a migration. |
 | [0024](0024-adoption-by-payload-import.md) | Adoption of a foreign deployment by payload import and restore, never in place | Accepted (planned M4) | Foreign deployments are adopted from the app's own backup payload; no foreign object is touched. |
 | [0025](0025-host-baseline.md) | Host support tiers and the first platform profile (Synology DSM 7.4) | Accepted (revised 2026-10-14) | Any Linux Docker host: support tier 1 (upstream Engine on CI-tested lines), support tier 2 (vendor appliances certified per platform build, Synology DSM 7.4 with Container Manager 24.0.2 first), an explicit unsupported list; capabilities, never platform branches; one multi-arch image; logging and CPU-limit rules. |
+| [0026](0026-app-images-built-in-app-ci.md) | App images are built in each app's CI and pulled, never built on the host | Accepted (OD-11) | No buildx and no build in `prepare`; images pulled by the Compose reference, pinned by ID and digest; `build_services` need `expect_labels` that bind `{commit}`. |
+| [0027](0027-local-fixture-repositories.md) | Local fixture repositories for selftest and tests | Accepted | `file://` repositories only under `INGAT_ROOT/cache/fixtures/`, so selftest and CI use the real git path without a server. |
+| [0028](0028-m1-replan-runtime-size.md) | M1 re-plan: runtime size | Accepted | M1 estimate raised from about 3,000 to about 6,600 runtime lines (stop line about 10,000); scope unchanged. |
+| [0029](0029-tested-image-and-tested-json-layer.md) | One image build per pipeline, tested by every lane, with tested.json as its final layer | Accepted | Lanes load the pipeline's per-architecture tarballs; the release adds `tested.json` as one final layer over the tested layers. |
+| [0030](0030-isolation-pool-outside-docker-default-pools.md) | The isolation subnet pool lies outside Docker's default address pools | Accepted | Default isolation pool `10.250.0.0/20` instead of `172.30.192.0/20`. |
 
 ## Adding an ADR
 

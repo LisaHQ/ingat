@@ -1,0 +1,72 @@
+{
+  "name": "lite-test--t7",
+  "networks": {
+    "default": {
+      "internal": true,
+      "ipam": {},
+      "labels": {
+        "io.github.lisahq.ingat.instance": "lite-test",
+        "io.github.lisahq.ingat.op": "7"
+      },
+      "name": "lite-test--t7_default"
+    }
+  },
+  "services": {
+    "app": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "command": [
+        "fx-lite",
+        "serve"
+      ],
+      "entrypoint": [
+        "env"
+      ],
+      "env_file": [
+        {
+          "path": "/srv/ingat/instances/lite-test/ops/7-drill/app.env"
+        }
+      ],
+      "environment": {
+        "DATA_DIR": "/data",
+        "JOBS": "off",
+        "RELEASE": "0123456789abcdef0123456789abcdef01234567"
+      },
+      "image": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "labels": {
+        "io.github.lisahq.ingat.instance": "lite-test",
+        "io.github.lisahq.ingat.op": "7",
+        "io.github.lisahq.ingat.role": "app"
+      },
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "pull_policy": "never",
+      "read_only": true,
+      "restart": "unless-stopped",
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "tmpfs": [
+        "/tmp"
+      ],
+      "user": "10001:10001",
+      "volumes": [
+        {
+          "bind": {},
+          "source": "/srv/ingat/instances/lite-test/data/data/t7",
+          "target": "/data",
+          "type": "bind"
+        }
+      ]
+    }
+  }
+}

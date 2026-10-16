@@ -1,0 +1,22 @@
+# fx-lite fixture: one container holds the web app, the in-process job runner and the SQLite store.
+# The image is the tool image (fixture mode) or any image with the `fx-lite` launcher on PATH; `env` is the
+# entrypoint so that task argv starts with the command name, as in an image without an entrypoint.
+# The target schema is a property of the image (its FXLITE_SCHEMA env, default 1), never of this file, as in the
+# consumer: a schema change always comes with an image change, which makes the deploy data-changing (LIFECYCLE §4.4).
+services:
+  app:
+    image: ${FXLITE_IMAGE:?}
+    entrypoint: ["env"]
+    command: ["fx-lite", "serve"]
+    user: "10001:10001"
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    volumes: ["${FXLITE_DATA_DIR:?}:/data"]
+    env_file: ["${FXLITE_ENV_FILE:?}"]
+    environment:
+      DATA_DIR: /data
+      RELEASE: ${FXLITE_RELEASE:?}
+    ports: ["127.0.0.1:${FXLITE_PORT:?}:3000"]
+    restart: unless-stopped

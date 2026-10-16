@@ -1,0 +1,30 @@
+# fx-web2: the fx-web fixture with a second stateless service, for the recreate-scope suite
+# (tests/docker/test_it_recreate.py). No service carries a per-commit value (fx-web's RELEASE): a commit then changes
+# exactly the services whose definition it edits.
+services:
+  site:
+    image: ${FXWEB_IMAGE:?}
+    entrypoint: ["env"]
+    command: ["fx-lite", "web"]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      SITE_NOTE: "a"
+    ports: ["127.0.0.1:${FXWEB_PORT:?}:8080"]
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+  docs:
+    image: ${FXWEB_IMAGE:?}
+    entrypoint: ["env"]
+    command: ["fx-lite", "web"]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      DOCS_NOTE: "a"
+    ports: ["127.0.0.1:${FXWEB_DOCS_PORT:?}:8080"]
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}

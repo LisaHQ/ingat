@@ -1,6 +1,6 @@
 # Ingat app manifest and instance config
 
-Status: **Decided** as a draft of manifest schema 1 and instance schema 1; frozen at the M2 exit gate. Nothing is implemented. The whole schema parses from v0.1, but M1 honours only the keys the SQLite consumer and the fixtures use (§11, §12); keys only the PostgreSQL consumer needs (§8-§10) are honoured from M2 and may still change during its onboarding, before the freeze (`ROADMAP.md` §3). Keys marked **Planned Mx** parse from v1 but are honoured only from that milestone. The examples in §8-§13 are the fixture forms of the acceptance inputs (§7): they, and the consumers' own manifests they mirror, must validate and run unchanged at the M2 exit gate, and a core change they force after the schema freeze is recorded as a generality failure (ADR-0021).
+Status: **Decided** as a draft of manifest schema 1 and instance schema 1; frozen at the M2 exit gate. The M1 parser, validator and `validate` command exist in code (not yet run in CI). The whole schema parses from v0.1, but M1 honours only the keys the SQLite consumer and the fixtures use (§11, §12), and its planners refuse what M1 cannot run yet (`not-in-this-release`: image sources, data services, volume stores, `log_snapshot`, deploy prechecks, postchecks and baseline, `exec` tasks, `file:` and `bundle:` streams, a `subnet` param left to allocation, and a task-based `[schema]` at `start`, `restart` and every bundle capture); keys only the PostgreSQL consumer needs (§8-§10) are honoured from M2 and may still change during its onboarding, before the freeze (`ROADMAP.md` §3). Keys marked **Planned Mx** parse from v1 but are honoured only from that milestone. The examples in §8-§13 are the fixture forms of the acceptance inputs (§7): they, and the consumers' own manifests they mirror, must validate and run unchanged at the M2 exit gate, and a core change they force after the schema freeze is recorded as a generality failure (ADR-0021).
 
 ## 1. Two files, two owners
 
@@ -27,23 +27,23 @@ Both files are TOML 1.0, parsed with `tomllib`; unknown keys are refused at ever
 | `exclusive_environments` | list | An instance whose environment is listed refuses to deploy or start while another instance of this app is registered on the host, and vice versa for `init` (`LIFECYCLE.md` §4.3) |
 | `[source] kind` | `"git"` \| `"image"` | Build from an exact commit, or deploy image digests |
 | `[source] release` | `"tag"` \| `"commit"` | What names a release (git only) |
-| `[source] tag_pattern` | regex | Allowed tags when `release = "tag"` |
+| `[source] tag_pattern` | regex | Allowed tags when `release = "tag"`; like every regex of both files, it must compile at parse time |
 | `[source] images` | table service → param | Image sources only: which `image` param feeds which service |
 | `[compose] files` | list | Runtime Compose files, in merge order |
-| `[compose] build_files` | list | Files used only by `prepare` to build (git only) |
-| `[compose] build_services` | list | Services built by `prepare`; every other image is pulled by tag once and pinned by ID. Pending owner decision OD-11 (where app images are built): if images are built in the app's CI instead, `build_services` are pulled by digest and checked with `expect_labels`; the key that names the source is defined by the M0 ADR |
-| `[compose] build_env` | table | Variables for the build invocation only (templated) |
-| `[compose] expect_labels` | table | Image labels that must equal the templated values, or the image is refused (provenance of reused tags) |
+| `[compose] build_files` | list | Files used only by an on-host build; unused while app images are built in the app's CI ([ADR-0026](adr/0026-app-images-built-in-app-ci.md)) |
+| `[compose] build_services` | list | Services whose images the app's own CI builds and publishes (owner decision OD-11, [ADR-0026](adr/0026-app-images-built-in-app-ci.md)). `prepare` pulls every image once by the reference its Compose service names (rendered with params, for example a `template` param `"ghcr.io/<owner>/<app>:{commit}"`) and pins it by ID and repository digest; for these services `expect_labels` is required and must bind `{commit}`, and each entry must name a Compose service (otherwise its label check would never run) |
+| `[compose] build_env` | table | Variables for an on-host build only (templated); unused while app images are built in the app's CI |
+| `[compose] expect_labels` | table | Image labels that must equal the templated values, or the image is refused (provenance of pulled tags); required for `build_services`, with at least one value containing `{commit}` |
 
 ### 2.2 `[params]`
 
-Every Compose variable without a Compose default (`${VAR}`, `${VAR:?…}`) must be declared; variables with a Compose default (`${VAR:-x}`) may be declared to let the instance set them, otherwise they are never set. Each entry is a table:
+Every Compose variable without a Compose default (`${VAR}`, `${VAR:?…}`, and `${VAR:-}`, whose empty default Compose reports like no default) must be declared; variables with a non-empty Compose default (`${VAR:-x}`) may be declared to let the instance set them, otherwise they are never set. Param names starting with `COMPOSE_` or `DOCKER_` are refused (Compose would read them as its own settings: `ARCHITECTURE.md` §9.5), in `[params]` and in `[[install]]` step `params`. Each entry is a table:
 
 | `kind` (default `string`) | Value comes from | Extra keys |
 |---|---|---|
-| `string` | instance `[params]`, else `default` | `required`, `default`, `optional` (unset leaves the Compose default), `pattern` |
+| `string` | instance `[params]`, else `default` | `required` (the instance must set it; refused together with `default` or `optional`), `default`, `optional` (unset leaves the Compose default), `pattern` |
 | `template` | the manifest, rendered per invocation | `value` (template, §3) |
-| `port` | instance value or allocated; unique per host; published on `127.0.0.1` only | — |
+| `port` | instance value or allocated from the host's port pool `20000-29999`; unique per host; published on `127.0.0.1` only | — |
 | `subnet` | instance value or allocated `/24`; unique per host; isolated runs get pool values | — |
 | `secrets_dir` | `INGAT_ROOT/instances/<i>/secrets` | — |
 | `env_file` | the rendered app env file of the deployment (0600) | — |
@@ -62,7 +62,7 @@ Every Compose variable without a Compose default (`${VAR}`, `${VAR:?…}`) must 
 |---|---|
 | `param` | The `env_file` param the Compose file uses |
 | `forbidden` | Keys the image fixes and no instance may set (they would redirect data or change runtime identity) |
-| `[app_env.keys] <KEY>` | `required`, `default`, `allowed` (list), `pattern`, `secret` (value set with `ingat secret set`, stored in `secrets/env/<KEY>`), `owner_gated` (a change makes the plan class D; dropped from isolated runs), `tool_managed` (set only by holds and `[rollback] env`) |
+| `[app_env.keys] <KEY>` | `required` (the instance must set it; refused together with `default` or `tool_managed`), `default`, `allowed` (list), `pattern`, `secret` (value set with `ingat secret set`, stored in `secrets/env/<KEY>`), `owner_gated` (a change makes the plan class D; dropped from isolated runs), `tool_managed` (set only by holds and `[rollback] env`) |
 
 Undeclared keys in the instance's `[app_env]` are refused. Values are rendered single-quoted; a value containing `'`, a newline or NUL is refused.
 
@@ -74,7 +74,7 @@ Undeclared keys in the instance's `[app_env]` are refused. Values are rendered s
 | `volume` | Compose volume key (`kind = "volume"`) |
 | `param` | `store` param used as the bind source (`kind = "bind"`) |
 | `service` | The data service that serves this store (optional for bind stores used by writers directly) |
-| `ready` | Probe that proves the store is ready (required when `service` is set) |
+| `ready` | Probe that proves the store is ready (required when `service` is set; an `exec` or `health` probe, because `http` probes do not run in isolated projects) |
 | `owner`, `mode` | Owner `uid:gid` and mode of new bind generations |
 | `local_only` | Refuse a generation path that is not a local filesystem |
 | `online_backup` | The app's backup tasks are consistent while writers run, so scheduled and manual backups keep writers up (pre-change and final bundles always stop writers) |
@@ -110,7 +110,7 @@ Every named volume in the merged model must be a store. `[services]`: `data` (st
 | `{instance}`, `{environment}`, `{host}` | instance name, environment label, host name | all |
 | `{operator}`, `{reason}`, `{op.seq}` | `SUDO_USER` or `root`, the `--reason` text (or `scheduled <class> backup`), operation sequence | all task argv |
 | `{release}`, `{commit}` | release (tag or commit) and 40-hex commit of the image set **this invocation runs** | all |
-| `{target.release}` | the release a deploy, rollback or restore moves to | deploy, restore, naming |
+| `{target.release}` | the release a deploy, rollback or restore moves to | migrate and restore tasks, pre-change naming |
 | `{image.<service>}` | image ID (`sha256:…`) of that service in the image set this invocation runs; for an imported adoption payload, the bundle's recorded deployment, which is the prepared candidate (`LIFECYCLE.md` §4.16) | task argv |
 | `{schema.expected}` | from this operation's schema read (task-based `[schema]`), or the value the deployment record holds from its activation (probe-based) (`LIFECYCLE.md` §4.7) | backup task argv |
 | `{bundle.id}`, `{bundle.payload}` | bundle id; its single payload entry | backup, verify, restore, migrate |
@@ -142,13 +142,13 @@ Unknown variables, or a variable outside its context, are validation errors. The
 | `observe` | `"schema"` | How an unknown outcome is decided |
 | `exit` | table code → `ok` \| `finding` \| `refused` \| `failed` \| `unknown` | Undeclared non-zero: `failed` for `read`, `unknown` otherwise |
 | `expect` | `{json = {<dotted path> = value or [any-of…]}}` (the probe grammar of §5, JSON only) | Must hold on the parsed `json` or `record` stdout for an `ok` exit to count as `ok`; otherwise the outcome is `failed` (read) or `unknown` (write). Used where one exit code means two things (the SQLite consumer's outbound preview command exits 2 both for a preview and for a usage error; §11). |
-| `args` | table name → regex | Typed arguments (`--arg name=value`) |
+| `args` | table name → regex | Typed arguments (`--arg name=value`); each regex must compile |
 | `clears_hold` | bool | Success clears `held_since` |
-| `operator` | bool (default `true`) | `false`: only operations may run it |
+| `operator` | bool (default `true`) | `false`: only operations may run it. `ingat task` also refuses a task with an `image` other than `current` or a `stage`, `bundle` or `generation:<store>` mount, which exist only inside the operations that use them (`not-operator`), so such tasks declare `operator = false` |
 | `max_input_bytes` | int | Limit for `input:` files |
 | `timeout` | duration | Hard limit; the task container is stopped and the step becomes `unknown` (data effect) or `failed` (read) |
 
-Validation rules specific to tasks: a task with effect `app-write` or `data` in `exec` mode may only appear in `restore.steps` or `restore.post` (isolated projects only: safety floor F15, `LIFECYCLE.md` §1); tasks used as `deploy.migrate` or in `[[install]]` with effect `data` must be `idempotent` or declare `observe`; every task in `backup.steps` or `backup.verify` is scratch class whatever its effect, may write only into the stage and the app's own backup bookkeeping, and must be `idempotent = true` unless its effect is `read` (`LIFECYCLE.md` §3.3); a task with `stdin` or `stdout = "terminal"` runs in the foreground CLI and may not be used by `scheduled`; `expect` requires `stdout = "json"` or `"record"`.
+Validation rules specific to tasks: a task with effect `app-write` or `data` in `exec` mode may only appear in `restore.steps` or `restore.post` (isolated projects only: safety floor F15, `LIFECYCLE.md` §1); tasks used as `deploy.migrate` or in `[[install]]` with effect `app-write` or `data` must be `idempotent` or declare `observe` (a live write task is a forward step: `LIFECYCLE.md` §3.3); every task in `backup.steps` or `backup.verify` is scratch class whatever its effect, may write only into the stage and the app's own backup bookkeeping, and must be `idempotent = true` unless its effect is `read` (`LIFECYCLE.md` §3.3); a task with `stdin` or `stdout = "terminal"` runs in the foreground CLI and may not be used by `scheduled`; `expect` requires `stdout = "json"` or `"record"`.
 
 ## 5. Probes `[probes.<name>]` and `[[smoke]]`
 
@@ -170,7 +170,7 @@ Common keys: `expect` = `{status, json = {<dotted path> = value or [any-of…]},
 | `name` | `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, at most 30 characters; the Compose project name; `--` cannot occur |
 | `app`, `environment` | App id (must equal the manifest's `app`); environment label `^[a-z][a-z0-9-]{0,31}$` |
 | `disposable` | Fixed at `init`; lets purge skip its restore-test (the confirmation screen says so). It never relaxes approval: class D stays terminal-only. |
-| `[source]` | git: `repo` (ssh or https URL), `key` (name of a deploy key in `INGAT_ROOT/keys/`), `manifest` (path, default `ingat.toml`), `accept` (optional regex narrowing allowed refs). Image apps: `kind = "image"`. |
+| `[source]` | git: `repo` (ssh or https URL; a `file://` URL only for a fixture repository under `INGAT_ROOT/cache/fixtures/`, [ADR-0027](adr/0027-local-fixture-repositories.md)), `key` (name of a deploy key in `INGAT_ROOT/keys/`), `manifest` (path, default `ingat.toml`), `accept` (optional regex narrowing allowed refs). Image apps: `kind = "image"`. |
 | `[params]` | Values for declared params only; `port` and `subnet` may be fixed here or left to allocation |
 | `[app_env]` | Values for declared non-secret app-env keys |
 | `[backups]` | `keep_daily`, `keep_weekly`, `keep_monthly`, `pin_pre_change_days`, `max_age_hours` (status attention), `restore_test_max_age_days` |
@@ -179,8 +179,8 @@ Common keys: `expect` = `{status, json = {<dotted path> = value or [any-of…]},
 ### 6.2 Validation (`ingat validate <repo-dir> [--instance <file>]`, offline, also in app CI)
 
 1. Strict parse of both files; schema versions; `requires_ingat` satisfied.
-2. Compose files exist; `compose config --variables` shows every variable without a default declared, and every declared param used.
-3. The merged runtime model, every task model and the isolated model render with sample values and pass the policy (`ARCHITECTURE.md` §9.5).
+2. Compose files exist and pass the raw-text rules (no `include`; `extends` only within the same file: `ARCHITECTURE.md` §9.5); `compose config --variables` shows every variable without a non-empty default declared, and every declared param used.
+3. The merged runtime model, every task model and the isolated model render with sample values and pass the policy (`ARCHITECTURE.md` §9.5), the isolated one under the isolated-run rules.
 4. Every named volume is a store; every bind store's param is a bind source; every published port comes from a `port` param on `127.0.0.1`.
 5. Every long-running service has one role; writers exist when stores exist; activation covers every long-running service; exactly one `reopens_writes` group when writers exist.
 6. Every referenced task, probe and service exists; exit maps are valid; template variables are in the closed set and in context; the task rules of §4 hold.
@@ -679,7 +679,7 @@ restore_test_max_age_days = 8
 
 ## 11. Example: `fx-lite` app manifest (the SQLite consumer pattern)
 
-This is the M2 acceptance form: a runtime Compose file whose network takes a fixed subnet from a `subnet` param, plus a build file that adds `build: .`. The M1 form mirrors the SQLite consumer before it has that runtime file: `files` and `build_files` are one Compose file that also carries `build: .` (the generated override resets it; `up` never builds) and there is no `FXLITE_SUBNET` param; everything else is identical.
+This is the M2 acceptance form: a runtime Compose file whose network takes a fixed subnet from a `subnet` param; the app's CI builds and publishes the image by commit, and its build file is unused by Ingat ([ADR-0026](adr/0026-app-images-built-in-app-ci.md)). The M1 form mirrors the SQLite consumer before it has that runtime file: one Compose file, no `FXLITE_SUBNET` param and no `log_snapshot` (M1 refuses it at plan time); everything else is identical. The fixture `fx-lite` (`ARCHITECTURE.md` §10.2) is that M1 form, except that the instance names its image (the tool image in selftest and CI) and its readiness probe calls the fixture's own `fx-lite probe`, because the tool image has no `wget` (the header of `fixtures/fx-lite/ingat.toml` lists every difference).
 
 ```toml
 # ingat.toml — fx-lite app manifest (Ingat manifest schema 1).
@@ -694,11 +694,11 @@ release = "commit"                            # one image tag per release commit
 [compose]
 files = ["compose.yaml"]                      # the service without `build:`; network subnet from FXLITE_SUBNET
 build_files = ["compose.yaml", "compose.build.yaml"]
-build_services = ["app"]
-build_env = { FXLITE_IMAGE = "fx-lite:{commit}" }
+build_services = ["app"]                      # built and published by the app's CI (ADR-0026)
+expect_labels = { "org.opencontainers.image.revision" = "{commit}" }
 
 [params]
-FXLITE_IMAGE    = { kind = "template", value = "fx-lite:{commit}" }
+FXLITE_IMAGE    = { kind = "template", value = "ghcr.io/<owner>/<app>:{commit}" }
 FXLITE_ENV_FILE = { kind = "env_file" }
 FXLITE_DATA_DIR = { kind = "store", store = "data" }
 FXLITE_PORT     = { kind = "port" }
@@ -736,7 +736,7 @@ online_backup = true                          # SQLite online backup
 
 [services]
 writers = ["app"]                             # web app, in-process job runner and the SQLite store in one container
-log_snapshot = ["app"]                        # honoured from M2
+log_snapshot = ["app"]                        # honoured from M2; M1 refuses a manifest that sets it
 
 [schema]
 probe = "ready"
@@ -839,6 +839,7 @@ effect = "app-write"                          # records its outcome in the app's
 idempotent = true                             # required for a non-read backup task; a redo writes into a fresh stage
 stdout = "json"
 exit = { 0 = "ok", 1 = "failed", 2 = "refused" }
+operator = false                              # it mounts the stage, which exists only inside a backup
 timeout = "60m"
 
 [tasks.restore]                               # runs only in the isolated project: internal network, read-only root
@@ -971,7 +972,7 @@ max_age_hours = 26
 restore_test_max_age_days = 8
 ```
 
-In the M1 form (no `FXLITE_SUBNET`), `PROXY_ADDRESS` is set to the peer address `ingat doctor lite-test` reports after the first install, followed by a config-only redeploy; that address holds only while the default network is not recreated, which is why the fixed-subnet runtime Compose file is required before the M2 freeze.
+In the M1 form (no `FXLITE_SUBNET`), `PROXY_ADDRESS` is set to the peer address `ingat doctor lite-test` reports after the first install (that report is not in the M1 code yet: `LIFECYCLE.md` §4.15), followed by a config-only redeploy; that address holds only while the default network is not recreated, which is why the fixed-subnet runtime Compose file is required before the M2 freeze.
 
 A later production instance of the same app differs only in `name`, `environment = "production"`, its URLs and port, and the owner's class D change that sets `DELIVERY_MODE = "smtp"` with `DELIVERY_ENABLED = "true"` after `ingat secret set <i> MAIL_USER` and `MAIL_PASSWORD`.
 

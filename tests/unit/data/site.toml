@@ -1,0 +1,32 @@
+manifest = 1
+app = "site"
+requires_ingat = ">=0.1,<1"
+
+[source]
+kind = "image"
+images = { site = "SITE_IMAGE" }
+
+[compose]
+files = ["compose.yaml"]
+
+[params]
+SITE_IMAGE = { kind = "image", service = "site" }
+SITE_PORT  = { kind = "port" }
+
+[services]
+stateless = ["site"]
+
+[probes.ready]
+http = { port_param = "SITE_PORT", path = "/" }
+expect = { status = 200 }
+timeout = "60s"
+
+[[activate]]
+services = ["site"]
+wait = ["ready"]
+
+[backup]
+strategy = "none"                             # backup, verify, restore and drill report "not applicable"
+
+[side_effects]
+kind = "none"

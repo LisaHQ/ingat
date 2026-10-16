@@ -1,0 +1,77 @@
+{
+  "name": "lite-test",
+  "networks": {
+    "default": {
+      "ipam": {},
+      "labels": {
+        "io.github.lisahq.ingat.instance": "lite-test"
+      },
+      "name": "lite-test_default"
+    }
+  },
+  "services": {
+    "app": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "command": [
+        "fx-lite",
+        "serve"
+      ],
+      "entrypoint": [
+        "env"
+      ],
+      "env_file": [
+        {
+          "path": "/srv/ingat/instances/lite-test/env/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.env"
+        }
+      ],
+      "environment": {
+        "DATA_DIR": "/data",
+        "RELEASE": "0123456789abcdef0123456789abcdef01234567"
+      },
+      "image": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "labels": {
+        "io.github.lisahq.ingat.instance": "lite-test",
+        "io.github.lisahq.ingat.role": "app"
+      },
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "networks": {
+        "default": null
+      },
+      "ports": [
+        {
+          "host_ip": "127.0.0.1",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "20080",
+          "target": 3000
+        }
+      ],
+      "pull_policy": "never",
+      "read_only": true,
+      "restart": "unless-stopped",
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "tmpfs": [
+        "/tmp"
+      ],
+      "user": "10001:10001",
+      "volumes": [
+        {
+          "bind": {},
+          "source": "/srv/ingat/instances/lite-test/data/data/g1",
+          "target": "/data",
+          "type": "bind"
+        }
+      ]
+    }
+  }
+}

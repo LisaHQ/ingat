@@ -1,6 +1,6 @@
 # Ingat lifecycle: operations, state machines, safety floors, data
 
-Status: **Decided** unless tagged **Planned Mx** or **Open OD-n** (an open owner decision). Nothing is implemented. Manifest keys referenced here are defined in [MANIFEST_SPEC.md](MANIFEST_SPEC.md); processes, layout and the Compose contract are in [ARCHITECTURE.md](ARCHITECTURE.md).
+Status: **Decided** unless tagged **Planned Mx** or **Open OD-n** (an open owner decision). The M1 operations exist in code; they have run only on local scratch Docker daemons, not yet in CI or on a host ([README](../README.md#status)). Manifest keys referenced here are defined in [MANIFEST_SPEC.md](MANIFEST_SPEC.md); processes, layout and the Compose contract are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Examples name two reference consumers by alias: *the PostgreSQL consumer* (PostgreSQL, backend and web services; an explicit migrate step; role grants after restore; an invariant-check command), mirrored by fixture `fx-pg`, and *the SQLite consumer* (one container; SQLite in a bind-mounted data directory; online app-native backup; an outbound mail queue; migrate at start), mirrored by fixture `fx-lite`. `fx-web` is the stateless fixture ([ARCHITECTURE.md](ARCHITECTURE.md) §10.2).
 
@@ -11,7 +11,7 @@ Floors are code. No flag, manifest key, instance key or environment variable dis
 | ID | Floor | Enforced by |
 |---|---|---|
 | F1 | **One explicit instance.** Every instance command names exactly one instance, resolved once and passed down unchanged; there is no default instance. The instance name is the Compose project. The daemon's engine ID must equal `host.json`. | CLI table, executor |
-| F2 | **Plan before effect; a refusal leaves no trace.** All checks run in a pure plan phase. A refused, stale or cancelled-before-effect command leaves `instances/` and the labelled Docker inventory identical (caches named in [ARCHITECTURE.md](ARCHITECTURE.md) §5.3 excepted). | plan framework, no-trace suite |
+| F2 | **Plan before effect; a refusal leaves no trace.** All checks run in a pure plan phase. A refused, stale or cancelled-before-effect command leaves `instances/` and the labelled Docker inventory identical (caches named in [ARCHITECTURE.md](ARCHITECTURE.md) §5.3 and the lock holder files `lock.holder.json` and `host.lock.holder.json` excepted; a refusal inside a started executor also leaves its approved plan in `plans/` and its run file in `host/runs/`). | plan framework, no-trace suite |
 | F3 | **Approval binds a plan.** Class C and D operations run only after approval of a plan whose hash covers inputs and the observed fingerprint (deployment seq, container IDs and config hashes, generation pointers, bundle hashes, open op). The executor re-observes and refuses a stale plan. | `core/approval.py`, executor |
 | F4 | **Frozen inputs.** An operation executes only its exported commit, manifest bytes, image IDs, generated override and rendered env files recorded in the plan. | executor |
 | F5 | **Intent before effect; observe before retry.** At most one open operation per instance; it blocks every other mutation except `resume`, `abandon`, `cancel` and tasks the open step allows. An `unknown` outcome is never retried blind. | journal, executor |
@@ -37,7 +37,7 @@ Floors are code. No flag, manifest key, instance key or environment variable dis
 | C | changing | on a terminal, type the instance name; otherwise `ingat apply <≥12 hex of plan hash>` for a plan produced by `ingat plan …` and handed over by the owner | only through `apply` |
 | D | destructive or data-losing | on a **real terminal only**: type the phrase plus a random 4-character challenge (for example `PURGE pg-staging k7q2`). `apply` is never accepted for class D, `disposable` instances included. | no |
 
-`selftest` and `conformance` drive their own throwaway instances inside one command and delete only objects that command created; they never use `apply` and need no class D approval.
+`selftest` and `conformance` drive their own throwaway instances inside one command and delete only objects that command created; they never use `apply`, and the plans they run inside the command need no approval of their own (no typed name, no class D challenge).
 
 | Command | Class | Runs in | Milestone |
 |---|---|---|---|
@@ -47,8 +47,8 @@ Floors are code. No flag, manifest key, instance key or environment variable dis
 | `prepare <i> --image <svc>=<repo>@sha256:…` | B | executor | M2 |
 | `task <i> <name>` where the task's effect is `read` | B | executor | M1 |
 | `cancel <i>` | B | CLI (writes the cancel file only) | M1 |
-| `selftest [--host]` | B | host executor | M1 |
-| `backup <i> [--class manual] [--reason TEXT]`, `verify <i> <bundle>\|--latest`, `verify … --restore-test`, `prune <i> --bundles [--apply]`, `scheduled backup\|verify\|task <i> …`, `scheduled status` | B | executor (`scheduled status`: CLI, writes only `host/attention.json`) | M1 |
+| `selftest [--host]` | B | host executor (`selftest --offline`: CLI, no daemon) | M1 |
+| `backup <i> [--class <class>] [--reason TEXT] [--prune]`, `verify <i> <bundle>\|--latest`, `verify … --restore-test`, `prune <i> --bundles [--apply]`, `scheduled backup\|verify\|task <i> …`, `scheduled status` | B | executor (`scheduled status`: CLI, writes only `host/attention.json`) | M1 |
 | `host init` | C | CLI (host lock; no Docker change) | M1 |
 | `init <i> --config <file> --ref <ref>` | C | CLI (host lock; no Docker change) | M1 |
 | `start\|stop\|restart <i> [<service>…]`, `resume <i>`, `abandon <i>` | C | executor | M1 |
@@ -82,8 +82,11 @@ parse ─► plan (pure: validate manifest/instance, observe read-only, gate tie
            ▼
        ops/<seq>-<kind>/ created ─► for each step: intent (fsync) ─► effect (EffectToken) ─► observe ─► done | failed | unknown
            ▼
-       result.json (write-once) ─► record.json (Record step) ─► lock released ─► CLI prints outcome and `next`
+       close decision journaled (step 0) ─► unwind (failure or abandon) ─► record.json ─► result.json (write-once)
+           ─► lock released ─► run file host/runs/<run-id>.json ─► CLI prints outcome and `next`
 ```
+
+`result.json` exists only for a closed operation, so it is written last: after a crash anywhere in the close, the operation is still open and the next `resume` or `abandon` finishes the close that step 0 recorded, never steps past what the unwind already reversed. Every executor run, a refused one included, leaves a run file (exit, code, message, `next` and warnings); the plan's warnings (a gate tier 1 warning, a skipped retention) are copied into `result.json` and the run file. A plan expires 24 hours after it was made: the executor refuses an expired one (exit 2), and M1 deletes no plan except those of a selftest run's own instances, at its teardown.
 
 ### 3.2 Operation states
 
@@ -91,7 +94,9 @@ parse ─► plan (pure: validate manifest/instance, observe read-only, gate tie
             ┌──────────── refused-stale (exit 1; nothing written under instances/)
 planned ─approve─► running ──────────────► completed (exit 0)
                     │  failure before the forward point: undo reversible steps ─► failed-unchanged (exit 3)
+                    │     … an undo or teardown that did not complete ─────────────► needs-review   (exit 4)
                     │  failure at/after the forward point: stop writers ──────────► failed-frozen  (exit 3)
+                    │  cancel before any effect ────────────────────────────────────► abandoned      (exit 130)
                     │  install pause ──────────────────────────────────────────────► paused         (exit 4) ─resume─► running
                     │  unknown outcome / executor killed / host reboot ─────────────► interrupted    (exit 4)
                     ▼
@@ -100,13 +105,13 @@ planned ─approve─► running ──────────────► c
             interrupted prepare / backup / verify / drill ─next command─► abandoned-auto (recorded undo and teardown), then the new command runs
 ```
 
-The **forward point** of an operation is the first step after which the previous state cannot be restored by undo: a data-effect task on the live generation (migrate), or the activation step marked `reopens_writes`. Every terminal state prints the exact next command; a test asserts that the printed command exists and succeeds from that state, including a restore into a never-deployed instance (an adoption's cut-over) that ends `failed-frozen` (§4.10) (an earlier in-house deployment controller had terminal states with no working way forward).
+The **forward point** of an operation is the first step after which the previous state cannot be restored by undo: a data-effect task on the live generation (migrate), or the activation step marked `reopens_writes`. In a data-changing update every activation group is forward, because the first start of a candidate writer may already change the data. A `Delete` never counts as the forward point (a failed deletion never stops writers or freezes), nor does the step of a one-step `app-write` task (§3.5), nor a migrate whose first attempt the app `refused` (nothing changed, §4.4). A cancel request after an effect follows the same failure rules with code `cancelled`: `failed-unchanged` before the forward point, `failed-frozen` after it. Every terminal state prints the exact next command; a test asserts that the printed command exists and succeeds from that state, including a restore into a never-deployed instance (an adoption's cut-over) that ends `failed-frozen` (§4.10) (an earlier in-house deployment controller had terminal states with no working way forward).
 
 ### 3.3 Step types (closed set; a new type needs an ADR)
 
 | Step | Class | Interruptible | `observe` | Undo |
 |---|---|---|---|---|
-| `Obtain(services)` (build or pull, record IDs) | scratch | yes | ledger entry with matching ID and labels | none (cache) |
+| `Obtain(services)` (pull, record IDs; Ingat never builds: [ADR-0026](adr/0026-app-images-built-in-app-ci.md)) | scratch | yes | ledger entry with matching ID and labels | none (cache) |
 | `RunTask` with effect `read` | scratch | yes | outcome record exists | none |
 | `SnapshotLogs(services)` (bounded `docker logs --tail`, redacted, 0600) | scratch | yes | artifact exists | none |
 | `Stop(services)` | reversible | no (bounded by `stop_grace_period`) | containers stopped | start them on the recorded deployment |
@@ -116,21 +121,26 @@ The **forward point** of an operation is the first step after which the previous
 | `CaptureBundle(class)` | scratch until sealed; the sealed bundle is kept | yes, until the seal | catalog entry with the bundle hash | discard the partial stage |
 | `VerifyBundle` | scratch | yes | verification record for the hash | none |
 | `SwitchGeneration(store, from, to)` | reversible until a writer starts on `to` | no | `record.json` pointer | switch back |
-| `Teardown(isolated project)` | scratch cleanup | no | own labelled containers and networks gone | none |
-| `Delete(plan item)` | forward | no | item gone; progress saved | none |
+| `Teardown(isolated project)` | scratch cleanup | no | own labelled containers and networks gone; it acts only on this operation's own `<i>--t<seq>` or `<i>--r<seq>` (else `not-isolated`), and right before `down` every container and network of the project must carry the instance and op labels (else `foreign`) | none |
+| `Delete(plan item)`: a bundle, an owned container ([ARCHITECTURE.md](ARCHITECTURE.md) §7.5) or a selftest generation (below) | forward, but never the forward point (§3.2) | no | item gone; progress saved | none |
 | `Record(kind)` | idempotent | no | record written | none |
 | `Pause(text, allow_tasks)` | operator | n/a | `resume` called | none |
 
-**Backup tasks are scratch.** Every task listed in `backup.steps` or `backup.verify` is scratch class whatever its declared effect. It may write only into the stage and into the app's own bookkeeping of backups (the SQLite consumer records each backup's outcome in its own database), and validation requires `idempotent = true` for every such task that is not `read`. A backup operation therefore has no forward step: abandoning it never stops or freezes writers.
+**Backup tasks are scratch.** Every task listed in `backup.steps` or `backup.verify` is scratch class whatever its declared effect. It may write only into the stage and into the app's own bookkeeping of backups (the SQLite consumer records each backup's outcome in its own database), and validation requires `idempotent = true` for every such task that is not `read`. A backup operation therefore has no forward point: abandoning it never stops or freezes writers, and the retention deletions of a scheduled backup never freeze either.
+
+**Selftest instances.** Two step forms act only on an `ingat-selftest-*` instance whose marker `instances/<i>/selftest.json`, written when selftest creates it, names a selftest run: a `Teardown` of its live project, re-proved like the isolated one (every container and network carries the instance label), and a `Delete` item of kind `generation`, which removes a generation (the current one included) only when its own marker names this instance, store and generation and no container mounts it. Selftest runs them in a closed operation of kind `teardown` (class B, planned with no writers, so a failed teardown stops nothing).
 
 ### 3.4 Resume, abandon, auto-abandon
 
-`resume <i>`: orphan check first (F15; exited task containers become evidence and are removed, [ARCHITECTURE.md](ARCHITECTURE.md) §4.5). Then take the first step without `done`:
+`resume <i>`: orphan check first (F15; exited task containers become evidence and are removed, [ARCHITECTURE.md](ARCHITECTURE.md) §4.5). A close already decided (step 0, §3.1) is finished as decided. Otherwise take the first step without `done`:
 
-- **scratch** → discard its partial outputs (stage, its isolated containers, an unpromoted generation it created) and redo it;
+- **scratch** → discard its partial outputs (stage, its isolated containers, an unpromoted generation it created) and redo it from the first step of its group; when this operation's isolated project still holds containers, it is taken down first (`compose down`, never `-v`, re-proved as for `Teardown`) and the redo starts at the first step that acted on that project or created a generation. A `CaptureBundle` seal left at `intent` whose bundle is already catalogued with the hash of its published `SHA256SUMS` is observed as done instead (§3.3), so a resume never seals a second bundle;
 - **reversible** → observe; `done` → record done; otherwise redo;
 - **forward and `idempotent`** → re-run;
-- **forward with `observe = "schema"`** → run the schema observation: target schema reached → done; source schema → not started, redo; anything else → stays `unknown`, exit 4 (Planned M3: `resolve`, class D, records the owner's decision).
+- **forward with `observe = "schema"`** → run the schema observation: target schema reached → done; source schema → not started, redo; anything else → stays `unknown`, exit 4 (Planned M3: `resolve`, class D, records the owner's decision). The M1 executor does not run this observation yet: it never repeats such a step, resume stops with exit 4, and `status` names `abandon`;
+- a step already journaled `failed` or `cancelled` (seen before a crash, or decided by orphan evidence) → the failure rules, as if seen now.
+
+A terminal task's operation resumes in the CLI on the terminal that runs `resume`, never in the detached executor ([ARCHITECTURE.md](ARCHITECTURE.md) §4.3).
 
 `abandon <i>`: undo reversible done steps in reverse, tear down scratch (isolated projects; generations this op created and never promoted, through a closed deletion of op-labelled objects), and close `abandoned`. If a forward step completed or is `unknown`, writers stay stopped and the instance becomes `frozen`.
 
@@ -143,7 +153,9 @@ The **forward point** of an operation is the first step after which the previous
 | An undeclared non-zero exit of a task with effect `read` | `failed` |
 | An undeclared non-zero exit of a task with effect `app-write` or `data` | `unknown`, never `failed` |
 | A declared `unknown` (for example the PostgreSQL consumer's exit 2 of its migrate, role-provisioning and grant tasks) | resolved by `observe = "schema"` or an idempotent re-run |
-| A step in an isolated project or on an unpromoted generation | scratch: discard and redo on resume |
+| A step in an isolated project or on an unpromoted generation | scratch: discard and redo on resume; a running executor treats a scratch step's `unknown` as `failed` |
+| A failure before the forward point whose undo or teardown did not complete (for example writers that could not be started again) | `needs-review` (exit 4) instead of `failed-unchanged`; the result lists the warnings |
+| A task container that cannot be proved stopped after a timeout or a cancel | the step stays `unknown` with code `task-running` and the operation stays open (exit 4); `next` is the exact `docker stop` (F15) |
 | A one-step `app-write` task (for example a password-reset task's declared `unknown` exit 2, or an `ok` exit whose stdout fails the task's `expect`) | the operation closes `needs-review` (exit 4); it does not freeze the instance or block other operations; `status` shows it |
 
 ### 3.6 Instance states
@@ -158,29 +170,31 @@ running ─restore of an app with side_effects.after_restore = "held"─► runn
 any ─purge (M3)─► purged                                                      records, bundles, secrets and lock are kept
 ```
 
+**The way forward from frozen.** When the newest deploy of the instance froze it (it ended `failed-frozen`, or was abandoned past its forward point) after its pre-change bundle was sealed and recorded `verified`, that deploy prints its own command as `next`, and `deploy <i> <ref>` of the same candidate over the same current deployment plans only `VerifyBundle` of that bundle → migrate (the forward point, with the capture's `{freeze_at}` and `{bundle.*}`) → the activation groups → checks → `Record`, pairing the new deployment with that bundle. A way forward that freezes again, or fails with nothing changed, can be planned again. It is refused (`frozen`; the way back is the restore of a pre-change bundle, M2) when the bundle was pruned or is no longer verified, when the migrate task is not `idempotent` (its last run may have ended `unknown`, F5), or for any other candidate. While an instance is frozen, retention keeps that bundle (§5.6); `backup` refuses (`frozen`, `next` the way forward), because the recorded release's tasks would capture data that may be past the forward point; `start`, `stop`, `restart` and write tasks refuse; read tasks, `verify` and drills run. A first install that ended frozen is deployed again on the `g1` it created.
+
 `disposable` is fixed at `init` and recorded in `record.json`; a later edit of `instance.toml` that changes it is refused.
 
 ## 4. Operations
 
 ### 4.1 `host init` and `init`
 
-- `host init` (once per host, host lock, in the CLI): record engine ID, DockerRootDir, versions, architecture, host capabilities (CPU CFS quota, memory limits), the runc, storage-driver, logging-driver and cgroup facts ([ARCHITECTURE.md](ARCHITECTURE.md) §11), roots, isolation pools (default subnet pool `172.30.192.0/20`, carved into `/24`s; [ARCHITECTURE.md](ARCHITECTURE.md) §7.4), and verify the roots' owner and mode.
-- `init <i> --config <file> --ref <ref>` (class C, host lock, in the CLI, nothing in Docker touched): the owner writes `instance.toml` first. Ingat fetches the source, resolves the ref, reads the manifest at that commit and validates the instance against it, then checks: name syntax; no foreign Compose project of that name on the daemon (resources labelled `com.docker.compose.project=<i>` without the Ingat label refuse); unique ports and subnets against every allocation entry, every published port and every network's IPAM config on the daemon; `exclusive_environments` (§4.3); secrets generated as declared (pairwise distinct). It writes `record.json` (state `registered`, a new lineage id, `disposable`), the allocation entries, the secrets and the placeholder directory.
+- `host init` (once per host, host lock, in the CLI, approved by typing the host name): record engine ID, DockerRootDir, versions, architecture, host capabilities (CPU CFS quota, memory limits), the runc, storage-driver, image-store, logging-driver and cgroup facts ([ARCHITECTURE.md](ARCHITECTURE.md) §11), roots, pools (isolation subnet pool `10.250.0.0/20`, carved into `/24`s, [ADR-0030](adr/0030-isolation-pool-outside-docker-default-pools.md); and the port pool `20000-29999` for `port` params left to allocation; [ARCHITECTURE.md](ARCHITECTURE.md) §7.4), and verify the roots' owner and mode (`INGAT_ROOT` `root:root 0700`, `INGAT_BACKUPS` root-owned with no group or other write bit; else `roots`, nothing written). It creates the tool's empty Docker client directory `cache/docker-config/`, `plans/`, `host/` and `inbox/`. A re-run on the same engine refreshes the facts and keeps the first recorded pools; another engine ID stops it (`engine-mismatch`, exit 2; `host rebind` is M4).
+- `init <i> --config <file> --ref <ref>` (class C, host lock, in the CLI, approved by typing the instance name, nothing in Docker touched; gate tier 2): the owner writes `instance.toml` first. Ingat fetches the source, resolves the ref, reads the manifest at that commit and validates the instance against it, then checks: name syntax; no Compose project of that name on the daemon (any container, network or volume labelled `com.docker.compose.project=<i>` refuses `foreign`, even one with the Ingat label, because no record of that instance exists); unique ports and subnets against every allocation entry, every published port, every network's IPAM config on the daemon and the isolation pool; `exclusive_environments` (§4.3); an app this release can run (otherwise `not-in-this-release`); in M1 every `subnet` param set in `instance.toml` (a subnet left to allocation is refused); no data or records of an earlier instance of that name (`exists`); secrets generated as declared (pairwise distinct). It writes `record.json` (state `registered`, a new lineage id, `disposable`) last, after the allocation entries, the secrets and the placeholder directory, so a re-run with the same config finishes an interrupted `init` and keeps the secrets it already wrote.
 
 ### 4.2 `prepare <i> <ref>` (class B)
 
-Fetch into the bare clone, resolve the ref once to a 40-hex SHA, check the manifest's `tag_pattern` and the instance's `accept` pattern, export with `git archive` into `cache/src/<sha>/`, read and validate the manifest at that commit, then:
+Fetch into the bare clone, resolve the ref once to a 40-hex SHA, check the manifest's `tag_pattern` and the instance's `accept` pattern, export with `git archive` into `cache/src/<sha>/`, read and validate the manifest at that commit (the exported manifest bytes must equal the validated ones, so `.gitattributes` cannot change them: `unsupported-source`), apply the raw-text rules to its Compose files before any Compose call reads them ([ARCHITECTURE.md](ARCHITECTURE.md) §9.5), then:
 
-- build `build_services` with `build_env` through the bundled buildx. An existing tag is reused only when the manifest's `expect_labels` match or the image ledger shows Ingat built that tag from the same commit with the same ID; a tag with other provenance is refused, never rebuilt. Pending owner decision OD-11 (option b): `build_services` are instead pulled by digest from the app's CI and checked with `expect_labels`; the key that names the source is defined by the M0 ADR;
-- pull every image that is not built (for example the PostgreSQL consumer's pinned `postgres` image) by its tag once, recording ID and repo digest;
+- pull every image of the candidate once by the reference its Compose service names, rendered with the instance's params (owner decision OD-11, [ADR-0026](adr/0026-app-images-built-in-app-ci.md): app images are built in the app's CI; Ingat never builds). A reference by digest that is already present is not pulled again. Images of `build_services` must match `expect_labels`, which bind the commit; a tag with other provenance is refused;
+- record every image's ID and repository digest (for example the PostgreSQL consumer's pinned `postgres` image as well as its own images);
 - for image sources: pull `repo@sha256:…` and verify `RepoDigests`;
-- write `candidates/<sha>.json` and write-once ledger entries (`host/images/<id>/<op>.json`), without the host lock.
+- write `candidates/<sha>-<refs>.json`, keyed by the commit and a hash of the rendered image references (a param that changes a reference gets a new candidate, never a stale one), and write-once ledger entries (`host/images/<id>/<instance>-<seq>.json`), without the host lock. A recorded candidate whose images are gone (for example after a manual image prune) is pulled again by its recorded digests.
 
-`deploy` runs `prepare` first when no candidate exists for the commit.
+`deploy` runs `prepare` first when no candidate exists for the commit; without a terminal it refuses before preparing anything (its own approval needs one).
 
 ### 4.3 `deploy` — first install (state `registered`)
 
-Plan: candidate prepared; capacity (2 GiB floor on the Docker root); every model passes the policy, host-capability checks included ([ARCHITECTURE.md](ARCHITECTURE.md) §9.5); `exclusive_environments`: an instance whose environment is listed refuses to deploy or start while any other instance of the same app is registered on the host, and other instances of the app refuse `init` while a listed one exists (for an app whose own deployment rule forbids any other instance of it on a daemon that runs its production instance; owner decision OD-5).
+Plan: candidate prepared; no object in the instance's Compose project that is not its own (`foreign`, F8; every deploy, `start`, `stop`, `restart` and a backup that stops writers check it, because Compose acts on everything its project holds); capacity (2 GiB floor on the Docker root); every model passes the policy, host-capability checks included ([ARCHITECTURE.md](ARCHITECTURE.md) §9.5); `exclusive_environments`: an instance whose environment is listed refuses to deploy or start while any other instance of the same app is registered on the host, and other instances of the app refuse `init` while a listed one exists (for an app whose own deployment rule forbids any other instance of it on a daemon that runs its production instance; owner decision OD-5).
 
 Steps: `CreateGeneration g1` for each store (volume with labels; bind directory with the manifest's owner and mode) → the manifest's `[[install]]` steps in order (`start` = `Up` with optional param overrides and waits; `task`; `pause`, which leaves the operation `paused` and allows only the listed tasks until `resume`) → smoke → image identity check → `Record` deployment 1 (`writes_reopened_at` at the `reopens_writes` step; for a probe-based `[schema]`, the value the probe reported at activation, with its time). A task the pause allows is journaled as a step of this operation ([ARCHITECTURE.md](ARCHITECTURE.md) §4.3). Install never captures logs of a service during a window marked `log_snapshot = false` (an app may print a one-time first-run secret to its log).
 
@@ -221,30 +235,30 @@ When no writer or data image changes, Ingat compares each service's `compose con
 
 ### 4.7 `backup` (class B; unattended)
 
-Plan: capacity (§5.8); gate tier 1 allowed only for an online backup.
+Plan: refused while the instance is frozen (§3.6); capacity (§5.8); gate tier 1 allowed only for an online backup (class `scheduled` or `manual` and every store `online_backup`). Retention is gate tier 2: on an uncertified or untested platform `backup --prune` refuses (exit 2), while `scheduled backup` backs up and skips its retention with the recorded warning `retention skipped: …`.
 
-Steps: [`Stop` writers when the store is not `online_backup`, or the class is `pre-change` or `final`] → `Up` data services and wait for readiness (F16) → **schema read**: for a task-based `[schema]`, the schema task as a scratch read step; for a probe-based `[schema]`, the value the deployment record holds from its activation (a running app's schema changes only through a deploy); the result feeds `{schema.expected}` and `bundle.json` → a stage in `ops/<seq>/stage/`, owned by the task's effective uid → the manifest's `backup.steps` in order (stdout streamed into stage files with the `nonempty` check, stdin streamed from stage files, declared mounts) → payload rule: exactly one top-level entry, equal to `backup.payload` when declared; hidden entries Ingat created are removed → `bundle.json`, `SHA256SUMS` and `meta/` → copy into `<backups>/<i>/.incoming-<id>/`, fsync, rename to `<id>/` → catalog record → `VerifyBundle` → [restart writers] → [retention, for `scheduled backup` or `--prune`] → `Record`.
+Steps: [`Stop` writers when the store is not `online_backup`, or the class is `pre-change` or `final`] → `Up` data services and wait for readiness (F16) → **schema read**: for a task-based `[schema]`, the schema task as a scratch read step (Planned M2: M1 refuses a capture for such an app, `not-in-this-release`); for a probe-based `[schema]`, the value the deployment record holds from its activation (a running app's schema changes only through a deploy); the result feeds `{schema.expected}` and `bundle.json` → a stage in `ops/<seq>/stage/`, owned by the task's effective uid → the manifest's `backup.steps` in order (stdout streamed into stage files with the `nonempty` check, stdin streamed from stage files, declared mounts) → payload rule: exactly one top-level entry, equal to `backup.payload` when declared; hidden entries Ingat created are removed → `bundle.json`, `SHA256SUMS` and `meta/` → copy into `<backups>/<i>/.incoming-<id>/`, fsync, rename to `<id>/` → catalog record → `VerifyBundle` → [restart writers] → [retention, for `scheduled backup` or `--prune`] → `Record`.
 
-A sealed bundle whose verification fails stays published but unverified (exit 3); retention never counts it as the newest verified bundle. A busy lock exits 2 and the scheduler mails the owner.
+A sealed bundle whose verification fails stays published, with an `ok: false` `verified` record (exit 3); retention never counts it as the newest verified bundle. A busy lock exits 2 and the scheduler mails the owner.
 
 ### 4.8 `verify <i> <bundle>|--latest` (class B)
 
-Re-hash the sealed directory (every listed file regular with link count 1; links, special files and unlisted files refused), compare the bundle hash with the catalog record (detects tampering in the backups root), make a private input copy, run the manifest's `backup.verify` tasks, append a `verified` record.
+Re-hash the sealed directory (every listed file regular with link count 1; links, special files and unlisted files refused), compare the bundle hash with the catalog record (detects tampering in the backups root), make a private input copy, run the manifest's `backup.verify` tasks, append a `verified` record. A hash mismatch or a failed verify task appends that record with `ok: false` (F10).
 
 ### 4.9 `verify … --restore-test` (the drill; class B; unattended)
 
-Plan: capacity (§5.8); `[drill] min_free_memory` against `/proc/meminfo`; gate tier 2; a free pool subnet (the executor allocates it at start: [ARCHITECTURE.md](ARCHITECTURE.md) §7.4); the bundle's recorded release images present (Ingat removes no images before M3; later a missing image is rebuilt by `prepare` from the recorded commit with a label check).
+Plan: capacity (§5.8); `[drill] min_free_memory` against `/proc/meminfo`; gate tier 2; a free pool subnet (the executor allocates it at start: [ARCHITECTURE.md](ARCHITECTURE.md) §7.4); the bundle's recorded release images present (Ingat removes no images before M3; a missing one refuses `missing-image`, and `prepare` of that release pulls it again by its recorded digest).
 
 Steps:
 
 1. `CreateGeneration t<seq>` for each store (`purpose=drill`).
-2. Isolated project `<i>--t<seq>`: override with the `t<seq>` stores, internal networks (which have no default route: an app that needs one gets a hold, as the PostgreSQL consumer's web service does), no published ports, pool subnets, the manifest's holds, **throwaway** generated secrets in `ops/<seq>/secrets/` (always; a drill never sees the instance's secrets), and an isolated app env file without owner-gated or secret keys.
+2. Isolated project `<i>--t<seq>`: override with the `t<seq>` stores, internal networks (an app must not rely on a default route there: an app that needs one gets a hold, as the PostgreSQL consumer's web service does; whether one exists differs by Engine, spike S12), no published ports, pool subnets, the manifest's holds, **throwaway** generated secrets in `ops/<seq>/secrets/` (always; with no declared secret, a `secrets_dir` param still gets the directory, holding only an empty `.keep` file; a drill never sees the instance's secrets), and an isolated app env file without owner-gated or secret keys.
 3. `Up` `restore.start` services, wait for store readiness.
 4. `restore.steps` (bundle files streamed over stdin, or a private input copy mounted).
 5. `restore.post` tasks; `restore.checks` and `drill.checks` (each must be `ok`); `drill.record` tasks (recorded, findings allowed).
 6. When `drill.activate`: `Up` the activation groups inside the isolated project; `exec` and `health` probes run, `http` probes are recorded as not applicable in isolation.
-7. Evidence (timings, outcomes, versions) → a `restore-tested` record bound to the bundle hash.
-8. `Teardown`: `compose down` of the isolated project (never `-v`), then a closed deletion of its own `t<seq>` volumes and directories, each re-proved (`purpose=drill`, `op=<seq>`, unused), then removal of its subnet allocation entry. Teardown runs on failure too.
+7. Evidence (timings, outcomes, versions) → a `restore-tested` record bound to the bundle hash; a failed drill appends it with `ok: false` (F10).
+8. `Teardown`: `compose down` of the isolated project (never `-v`, re-proved: §3.3), then a closed deletion of its own `t<seq>` volumes and directories, each re-proved (`purpose=drill`, `op=<seq>`, unused), then removal of its subnet allocation entry. Teardown runs on failure too.
 
 The live instance keeps running (owner decision OD-6).
 
@@ -275,11 +289,11 @@ The PostgreSQL consumer (mirrored by `fx-pg`): `pg_restore --single-transaction 
 
 ### 4.11 `start`, `stop`, `restart` (class C)
 
-`start` uses the recorded deployment's pinned image IDs and refuses while frozen (`--unfreeze` is class D), while an operation is open, on an engine-ID mismatch, on an `exclusive_environments` conflict, or, for a task-based `[schema]`, when the schema task (run as a scratch step) shows a pending migration. The schema check does not apply to a `migrates_on_start` app with a probe-based schema: its schema cannot be read before it starts, and `start` runs the same pinned image IDs that already ran on this data. `stop` stops writers first, then the rest in reverse activation order. `restart` snapshots logs first.
+`start` uses the recorded deployment's pinned image IDs and refuses while frozen (`--unfreeze` is class D), while an operation is open, on an engine-ID mismatch, on an `exclusive_environments` conflict, or, for a task-based `[schema]`, when the schema task (run as a scratch step) shows a pending migration (Planned M2: M1 refuses `start` and `restart` of such an app, `not-in-this-release`). The schema check does not apply to a `migrates_on_start` app with a probe-based schema: its schema cannot be read before it starts, and `start` runs the same pinned image IDs that already ran on this data. `stop` stops writers first, then the rest in reverse activation order. `stop` and `restart` refuse while frozen too (a stopped instance could later start past the unfreeze). A partial `stop <i> <service>…` records no state change. `restart` snapshots logs first (Planned M2, with `SnapshotLogs`).
 
 ### 4.12 `task <i> <name>`
 
-Only declared tasks. Read tasks are class B; `app-write` and `data` tasks are class C one-step operations. An app's own preview-then-confirm commands are modelled as two tasks: a preview task (without the app's confirm argument; `read` when the app's preview writes nothing, otherwise `app-write` and `idempotent`) and a separate `app-write` task with the confirm argument (the SQLite consumer's outbound commands, [MANIFEST_SPEC.md](MANIFEST_SPEC.md) §11). Ingat does not bind the two invocations; the app's own confirm command re-checks its state. A task's `expect` (§4 of [MANIFEST_SPEC.md](MANIFEST_SPEC.md)) decides whether an `ok` exit really is `ok`. Output classes: `terminal` is shown and never captured (the task runs in the CLI container, [ARCHITECTURE.md](ARCHITECTURE.md) §4.3); `record` is stored 0600 in `reports/` or the op's artifacts; `json` is parsed, bounded and redacted.
+Only declared tasks. Read tasks are class B; `app-write` and `data` tasks are class C one-step operations. A task with `operator = false`, an `image` other than `current`, or a `stage`, `bundle` or `generation:<store>` mount (these exist only inside the operations that use them) is refused (`not-operator`). An app's own preview-then-confirm commands are modelled as two tasks: a preview task (without the app's confirm argument; `read` when the app's preview writes nothing, otherwise `app-write` and `idempotent`) and a separate `app-write` task with the confirm argument (the SQLite consumer's outbound commands, [MANIFEST_SPEC.md](MANIFEST_SPEC.md) §11). Ingat does not bind the two invocations; the app's own confirm command re-checks its state. A task's `expect` (§4 of [MANIFEST_SPEC.md](MANIFEST_SPEC.md)) decides whether an `ok` exit really is `ok`. Output classes: `terminal` is shown and never captured (the task runs in the CLI container, [ARCHITECTURE.md](ARCHITECTURE.md) §4.3); `record` is stored 0600 in `reports/` or the op's artifacts; `json` is parsed, bounded and redacted.
 
 ### 4.13 `prune`
 
@@ -299,7 +313,10 @@ Only declared tasks. Read tasks are class B; `app-write` and `data` tasks are cl
 ### 4.15 Diagnostics
 
 - `status [--json]` reads records first (deployment, generations, open operation and its last step, `held_since`, last bundle and its verification ages, last restore-test age), then live Docker data, reported separately when unavailable: service state, health, restart counts, image-ID and config-hash drift, foreign objects, free space on every root and the Docker root, gate tier. `changed-outside` attention means a deployed instance's containers, networks or generation volumes are missing or differ from the recorded deployment (for example after a Container Manager "Clean": [ARCHITECTURE.md](ARCHITECTURE.md) §11.2); it ships with `status` in M1. `uncertified` attention means no certification matches the host's platform build ([ARCHITECTURE.md](ARCHITECTURE.md) §3.6): gate tier 2, scheduled drills included, refuses until `selftest --host` certifies the build. Every JSON answer carries `next`, the exact command to run. Exit 5 when attention is needed.
-- `doctor <i>` adds policy and gate checks (certification included), secret-file shape, port and subnet collisions, root owner and mode, the observed proxy peer address compared with the configured trusted-proxy value when the manifest names one (as the SQLite consumer's does), and capability availability (for example "restore: not applicable" for a stateless site).
+  - Attention codes, most important first (the answer's `next` serves the first present): `daemon-unreachable`, `engine-mismatch`, `invalid-config` (an instance whose `instance.toml` or records do not load; `status` with no name and `scheduled status` report the others too; `next` is `status <i>`, which names the errors), `open-operation`, `frozen` (`next` is the way forward when it can be taken, §3.6, else `history <i>`), `last-op-failed` and `needs-review` (`next` is what that operation's result printed, or `history <i>`), `changed-outside`, `foreign`, `drift`, `held`, `unverified-bundle`, `backup-old`, `restore-test-old`, `uncertified`.
+  - An open operation counts as running, not as attention, while an executor of the instance runs it (the host executor for a selftest instance) or, for a terminal task the CLI runs, while its task container runs a step in flight. A task container that outlived its executor makes `next` its exact `docker stop`. `history` shows an open operation as running, paused or interrupted.
+  - A container stopped by a completed `stop` of its service (Docker's finish time within that operation) is not `changed-outside`.
+- `doctor <i>` adds policy and gate checks (certification included), secret-file shape, port and subnet collisions, root owner and mode, the observed proxy peer address compared with the configured trusted-proxy value when the manifest names one (as the SQLite consumer's does; not in M1 code yet: no manifest key names that value), and capability availability (for example "restore: not applicable" for a stateless site).
 - `scheduled status` (class B, unattended, M1-M2; replaced by `check` in M3) computes the same attention codes as `status` for every instance and compares the set with `host/attention.json`, the only file it writes. It exits 5 and prints the new and cleared codes only when the set changed since its last run; otherwise it exits 0 and prints nothing. So a lasting condition (an app `held` after a restore, an old drill) mails the owner once, not every run.
 - **Planned M3:** `check` (the scheduled monitor, at parity with the PostgreSQL consumer's own monitoring script): container health and restart deltas, the ready predicate over the published port, certificate expiry of the public URL, disk thresholds, backup and restore-test age, open operations; dedupe state in `instances/<i>/monitor.json`, the only file `check` writes.
 
@@ -351,12 +368,12 @@ Adoption brings an app deployment that Ingat did not create (started by hand, fr
                    payload {entry, files [{path, size, sha256}], total_bytes}, meta [...],
                    tool {version, engine, api, cli, compose, arch, os}, host,
                    origin (optional, M4: {adopted_from: <name>} for an imported adoption payload, §4.16)
-  SHA256SUMS       every payload and meta file
+  SHA256SUMS       bundle.json and every payload and meta file
   payload/<entry>/ what the app's backup tasks produced: exactly one top-level entry
   meta/            ingat.toml and the Compose files of that commit, deployment.json (non-secret)
 ```
 
-The **bundle hash** is the SHA-256 of `SHA256SUMS`. It is recorded in `instances/<i>/catalog/<id>.json` (root-only), so a swapped or edited bundle in the backups root is detected on every use. Verification records live in `instances/<i>/verifications/`, outside the sealed directory, so the hash is not circular. A bundle never contains secrets, env files or the resolved Compose model. An imported adoption payload (M4, §4.16) records `consistency = "external"`, no `freeze_at` and no `schema`, and a `deployment` with no `seq` whose release, commit and image IDs are those of the prepared candidate, so `{image.<service>}` renders the candidate's IDs in its drill and restore.
+The **bundle hash** is the SHA-256 of `SHA256SUMS`. It is recorded in `instances/<i>/catalog/<id>.json` (root-only), so a swapped or edited bundle in the backups root is detected on every use. Verification records live in `instances/<i>/verifications/<bundle-id>.json`, one append-only JSON Lines file per bundle outside the sealed directory, so the hash is not circular. A bundle never contains secrets, env files or the resolved Compose model. An imported adoption payload (M4, §4.16) records `consistency = "external"`, no `freeze_at` and no `schema`, and a `deployment` with no `seq` whose release, commit and image IDs are those of the prepared candidate, so `{image.<service>}` renders the candidate's IDs in its drill and restore.
 
 ### 5.4 Bundle ids
 
@@ -369,13 +386,15 @@ The id comes from the manifest's `[backup.naming]` template for the class (defau
 | `verified` | the bundle hash matches the catalog and every `backup.verify` task returned `ok` (an app without a read-only verify command, such as the SQLite consumer today, gets hash-only verification) | a data-changing deploy (its own pre-change bundle) |
 | `restore-tested` | the drill (§4.9) passed restore, post tasks, checks and probes | purge of a non-disposable instance; `status` flags one older than `restore_test_max_age_days` |
 
+Only records bound to the catalogued bundle hash count, and per level the newest one decides: a failed verify or drill appends `ok: false`, so a bundle whose newest record at a level failed is no longer counted at that level (`status` shows `unverified-bundle`).
+
 ### 5.6 Retention (`prune --bundles`)
 
-Calendar windows in UTC: `keep_daily`, `keep_weekly`, `keep_monthly` (restic vocabulary). Always kept: the newest bundle, the newest verified bundle, the newest restore-tested bundle, pre-change bundles younger than `pin_pre_change_days`, pre-change bundles paired with the current or previous deployment, and anything an open operation references. Retention acts only on catalogued bundles; it refuses the whole run when any bundle is dated after the host clock (a rule taken from the SQLite consumer's own backup runbook); it never deletes an unverifiable bundle; deletion is a closed plan of catalog entries. App-side pruning (both reference consumers have their own) is never used under Ingat.
+Calendar windows in UTC: `keep_daily`, `keep_weekly`, `keep_monthly` (restic vocabulary). Always kept: the newest bundle, the newest verified bundle, the newest restore-tested bundle, pre-change bundles younger than `pin_pre_change_days`, pre-change bundles paired with the current or previous deployment, the pre-change bundle of the update that froze the instance while it is frozen (its way forward and its restore need it, §3.6), and anything an open operation references. Retention is gate tier 2 ([ARCHITECTURE.md](ARCHITECTURE.md) §3.6; a `scheduled backup` skips it with a warning, §4.7). A deleted bundle is renamed aside, removed and recorded by a tombstone `catalog/<id>.pruned.json`. Retention acts only on catalogued bundles; it refuses the whole run when any bundle is dated after the host clock (a rule taken from the SQLite consumer's own backup runbook); it never deletes an unverifiable bundle; deletion is a closed plan of catalog entries. App-side pruning (both reference consumers have their own) is never used under Ingat.
 
 ### 5.7 Side effects and holds
 
-Every isolated run (drill, restore staging) applies the manifest's `[holds.<service>]` as Compose `environment` overrides, which beat `env_file` values; drops owner-gated and secret app-env keys from the isolated env file; makes every network internal; publishes no ports. For the SQLite consumer (mirrored by `fx-lite`) the holds set its outbound mode to capture and switch its job runner off; its real-sending switch and the SMTP credentials are dropped, so even a hold bug cannot reach SMTP. Holds also cover startup needs of isolation: the PostgreSQL consumer's web service (mirrored by `fx-pg`) derives its trusted proxy address from the default IPv4 route and exits without one, and internal networks have none, so its hold sets that address to `127.0.0.1` (any IPv4 address works: no proxy traffic exists in isolation; spike S12).
+Every isolated run (drill, restore staging) applies the manifest's `[holds.<service>]` as Compose `environment` overrides, which beat `env_file` values; drops owner-gated and secret app-env keys from the isolated env file; makes every network internal; publishes no ports. For the SQLite consumer (mirrored by `fx-lite`) the holds set its outbound mode to capture and switch its job runner off; its real-sending switch and the SMTP credentials are dropped, so even a hold bug cannot reach SMTP. Holds also cover startup needs of isolation: the PostgreSQL consumer's web service (mirrored by `fx-pg`) derives its trusted proxy address from the default IPv4 route and exits without one, and an internal network may have none (it differs by Engine: spike S12), so its hold sets that address to `127.0.0.1` (any IPv4 address works: no proxy traffic exists in isolation).
 
 Apps with `side_effects.kind = "outbound"`:
 
@@ -393,9 +412,9 @@ Checked before any effect, **grouped by filesystem** (`st_dev` of `INGAT_BACKUPS
 | backup | S for the stage (`INGAT_ROOT`) + S for the published copy (`INGAT_BACKUPS`) + 1 GiB floor per filesystem |
 | drill, restore | S for the input copy (`INGAT_ROOT`) + 2 × S for the restored store (generation location: `INGAT_ROOT` for bind stores, the Docker root for volumes) + 1 GiB floor per filesystem |
 | import of an adoption payload (M4) | as backup, with S measured from the payload directory |
-| build | 2 GiB floor on the Docker root |
+| prepare (pulls), first install | 2 GiB floor on the Docker root |
 
-S is the newest catalogued payload of the instance. Before the first bundle it is estimated from the measured store size: the bind generation's size from a no-follow walk, or the volume's size from `docker system df -v` (read-only). Ingat never deletes anything to make room.
+A root or the probe mount that does not exist cannot be measured and refuses (`cannot-measure`, exit 2). S is the newest catalogued payload of the instance. Before the first bundle it is estimated from the measured store size: the bind generation's size from a no-follow walk, or the volume's size from `docker system df -v` (read-only). Ingat never deletes anything to make room.
 
 ### 5.9 Off-host copies
 
@@ -407,17 +426,17 @@ Delegated to the platform's tools, outside Ingat. After the nightly backups, a c
 |---|---|
 | 0 | completed |
 | 1 | refused; nothing changed (invalid input, policy, stale plan, capacity, wrong state) |
-| 2 | could not run; nothing changed (daemon unreachable, lock busy, open operation, untested platform for this tier, usage) |
-| 3 | failed after effects; the instance is in a recorded safe state (`failed-unchanged` or `failed-frozen`); `status` shows `next` |
+| 2 | could not run; nothing changed (daemon unreachable, lock busy, open operation, untested platform for this tier, usage errors such as a bad instance name, argument or path, no terminal for a typed approval, an expired plan, an unmeasurable root) |
+| 3 | failed after effects, a cancel after effects included (code `cancelled`); the instance is in a recorded safe state (`failed-unchanged` or `failed-frozen`); `status` shows `next` |
 | 4 | an operation needs attention (paused, interrupted, unknown, needs-review); run `ingat status <i>` |
 | 5 | findings (status, verify or read-only check tasks found something; nothing failed) |
 | 130 | cancelled before any effect |
 
-Every JSON result also carries a stable machine code string.
+Every JSON result also carries a stable machine `code` string and `next`; a refusal or failure also carries its message, including one the executor decided.
 
 ## 7. Scheduled jobs
 
-The host's scheduler runs every job as root without a terminal and mails the owner when a job exits non-zero: systemd timers (a oneshot service per job with an `OnFailure=` unit), cron as a fallback (`MAILTO`), or the platform's own scheduler (on DSM, Task Scheduler with a user-defined script, user root, "send run details by email only when the script terminates abnormally"). Every entry calls the wrapper by absolute path. `scheduled` prints one line on success and a redacted summary on stderr on failure. Example schedule for a host with a SQLite-consumer test instance `lite-test` and a PostgreSQL-consumer staging instance `pg-staging`, under the default root (on DSM the wrapper is `/volume1/ingat/bin/ingat`):
+The host's scheduler runs every job as root without a terminal and mails the owner when a job exits non-zero: systemd timers (a oneshot service per job with an `OnFailure=` unit), cron as a fallback (`MAILTO`), or the platform's own scheduler (on DSM, Task Scheduler with a user-defined script, user root, "send run details by email only when the script terminates abnormally"). Every entry calls the wrapper by absolute path. `scheduled` refuses class C and D plans and terminal tasks (`unattended`, exit 2), prints one line on success (naming an operation it auto-abandoned) and a redacted summary on stderr on failure. Example schedule for a host with a SQLite-consumer test instance `lite-test` and a PostgreSQL-consumer staging instance `pg-staging`, under the default root (on DSM the wrapper is `/volume1/ingat/bin/ingat`):
 
 | When | Command |
 |---|---|
@@ -429,4 +448,4 @@ The host's scheduler runs every job as root without a terminal and mails the own
 | Sunday 06:00 | `/srv/ingat/bin/ingat scheduled verify pg-staging --latest --restore-test` |
 | hourly | `/srv/ingat/bin/ingat scheduled status` (exit 5 and mail only when the attention set changed, §4.15); replaced by `check` in M3 |
 
-Job times stay apart: a busy lock exits 2 and is mailed, never queued. After a platform update (on a Linux host, every reboot into a new kernel) a drill exits 2 and is mailed until `selftest --host` certifies the new build, while the backups continue ([ARCHITECTURE.md](ARCHITECTURE.md) §3.6). **Planned M3:** `ingat schedule render <i> --systemd` prints oneshot units, timers (`Persistent=true`) and an `OnFailure=` unit; `--cron` prints crontab lines as a fallback; `--dsm` prints the Task Scheduler entries to create.
+Job times stay apart: a busy lock exits 2 and is mailed, never queued. After a platform update (on a Linux host, every reboot into a new kernel) a drill exits 2 and is mailed until `selftest --host` certifies the new build, while the backups continue and skip their retention with a recorded warning ([ARCHITECTURE.md](ARCHITECTURE.md) §3.6). **Planned M3:** `ingat schedule render <i> --systemd` prints oneshot units, timers (`Persistent=true`) and an `OnFailure=` unit; `--cron` prints crontab lines as a fallback; `--dsm` prints the Task Scheduler entries to create.

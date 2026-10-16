@@ -1,0 +1,287 @@
+# fx-lite-slow: the fx-lite fixture manifest with slow tasks, used by the session-loss suite
+# (tests/docker/test_it_session.py), which signals the follower and the executor while a step is in flight. The
+# backup task first waits 12 seconds, and three operator tasks only wait: `slow-read` (effect read: a scratch step,
+# interruptible), `slow-write` (effect app-write: a forward step, atomic) and `slow-terminal` (slow-write with its
+# output on the terminal, so the CLI runs it). Each wait ends at once on SIGTERM, so a stopped task container exits
+# within its grace. Everything else is fixtures/fx-lite/ingat.toml; the repository's compose.yaml and app are the
+# fixture's own.
+manifest = 1
+app = "fx-lite"
+requires_ingat = ">=0.1,<1"
+
+[source]
+kind = "git"
+release = "commit"                            # one image per release commit
+
+[compose]
+files = ["compose.yaml"]
+
+[params]
+FXLITE_IMAGE    = { required = true }         # the instance names the image (CI and selftest: the tool image by digest)
+FXLITE_RELEASE  = { kind = "template", value = "{release}" }
+FXLITE_ENV_FILE = { kind = "env_file" }
+FXLITE_DATA_DIR = { kind = "store", store = "data" }
+FXLITE_PORT     = { kind = "port" }
+
+[app_env]
+param = "FXLITE_ENV_FILE"
+# Fixed by the image, or used only by a development seed command that never runs in production.
+# Any other undeclared key is refused anyway.
+forbidden = ["APP_ENV", "HOST", "PORT", "DATA_DIR", "DATABASE_PATH", "SEED_PASSWORD"]
+
+[app_env.keys]
+ALLOWED_ORIGINS  = { required = true }
+BASE_URL         = { required = true }
+MAIL_SENDER      = { required = true }
+PROXY_ADDRESS    = { required = true }
+SECURE_COOKIES   = { allowed = ["true", "false"] }
+SESSION_HOURS    = { pattern = '^[0-9]{1,4}$' }
+DELIVERY_MODE    = { default = "capture", allowed = ["capture", "smtp"], owner_gated = true }
+DELIVERY_ENABLED = { allowed = ["true"], owner_gated = true }   # real sending needs both owner-gated keys
+MAIL_HOST        = { pattern = '^[A-Za-z0-9.-]{1,253}$' }
+MAIL_PORT        = { pattern = '^[0-9]{1,5}$' }
+MAIL_SECURITY    = { allowed = ["starttls", "tls"] }
+MAIL_USER        = { secret = true }
+MAIL_PASSWORD    = { secret = true }
+JOBS             = { allowed = ["off"], tool_managed = true }
+
+[stores.data]
+kind = "bind"
+param = "FXLITE_DATA_DIR"
+owner = "10001:10001"                         # the service user
+mode = "0700"
+local_only = true                             # SQLite WAL: never SMB/NFS or a synchronized folder
+online_backup = true                          # SQLite online backup
+
+[services]
+writers = ["app"]                             # web app, in-process job runner and the SQLite store in one container
+
+[schema]
+probe = "ready"
+expected = "schema.expected"
+actual = "schema.actual"
+migrates_on_start = true                      # every image change is data-changing
+
+[probes.ready]
+exec = "app"
+argv = ["fx-lite", "probe", "http://127.0.0.1:3000/api/ready"]
+expect = { json = { status = "ready", data_writable = true } }
+stable = "5s"
+timeout = "120s"
+
+[probes.edge-live]
+http = { port_param = "FXLITE_PORT", path = "/api/health" }
+expect = { status = 200, json = { status = "ok" } }
+timeout = "30s"
+
+[[activate]]
+services = ["app"]
+wait = ["ready", "edge-live"]
+reopens_writes = true
+
+[[smoke]]
+name = "live"
+http = { port_param = "FXLITE_PORT", path = "/api/health" }
+expect = { status = 200, json = { status = "ok" } }
+[[smoke]]
+name = "ready"
+http = { port_param = "FXLITE_PORT", path = "/api/ready" }
+expect = { status = 200, json = { status = "ready", data_writable = true } }
+
+[[install]]
+task = "migrate"                              # once and alone: concurrent first opens can fail with SQLITE_BUSY
+[[install]]
+start = ["app"]
+wait = ["ready", "edge-live"]
+[[install]]
+pause = "Copy the bootstrap file into the Ingat inbox (INGAT_ROOT/inbox/), run `ingat task {instance} bootstrap-config --input config=<file>` (it prints a single-use setup code to the terminal that runs it and never records it), complete setup in the browser, then run `ingat resume {instance}`."
+allow_tasks = ["bootstrap-config", "bootstrap-new-code"]
+
+[deploy]
+migrate = "migrate"                           # explicit one-off before the start, so the start applies nothing
+
+[backup]
+strategy = "tasks"
+steps = ["backup"]
+verify = []                                   # hash-only until the app has a read-only verify command
+
+[restore]
+start = []
+steps = ["restore"]
+post = []
+checks = []
+activate = true                               # start the app on the new generation in isolation and wait for `ready`
+
+[rollback]
+env = { JOBS = "off" }                        # a schema older than the outbound pause cannot hold paused jobs
+
+[drill]                                       # throwaway secrets; mail credentials and owner-gated keys are dropped in isolation
+checks = []
+record = []
+activate = true
+min_free_memory = "512m"
+
+[holds.app]
+DELIVERY_MODE = "capture"
+JOBS = "off"
+
+[side_effects]
+kind = "outbound"
+restore_via_app = true
+after_restore = "held"
+clear_hold = "queue-resume"
+single_active = true                          # Planned M4: never two queues on one data lineage
+restore_notice = "Outbound delivery is paused (reason: restored) and queued sends are held. List them with `ingat task {instance} queue-held`, check the mailbox, then use queue-release-job / queue-release-all / queue-drop-job, check `ingat task {instance} queue-status`, and finally run queue-resume."
+
+# ---------------------------------------------------------------- tasks (all `run`: a second SQLite process is safe under WAL)
+[tasks.migrate]
+service = "app"
+mode = "run"
+image = "candidate"
+argv = ["fx-lite", "migrate"]
+effect = "data"
+idempotent = true                             # exclusive lock, one transaction; a re-run applies nothing
+exit = { 0 = "ok" }                           # any other exit is unknown (data effect)
+operator = false
+timeout = "15m"
+
+[tasks.backup]
+service = "app"
+mode = "run"
+argv = ["sh", "-c", "trap 'exit 143' TERM; sleep 12 & wait $!; exec fx-lite backup --to /out"]
+user = "10001:10001"                          # owner of the stage
+mounts = { "/out" = "stage" }                 # outside the data directory, as the app requires
+effect = "app-write"                          # records its outcome in the app's own backup bookkeeping
+idempotent = true                             # required for a non-read backup task; a redo writes into a fresh stage
+operator = false                              # runs only inside a backup: alone it would leave a data copy nothing prunes
+stdout = "json"
+exit = { 0 = "ok", 1 = "failed", 2 = "refused" }
+timeout = "60m"
+
+[tasks.restore]                               # runs only in the isolated project: internal network, read-only root
+service = "app"
+mode = "run"
+image = "bundle"
+argv = ["fx-lite", "restore", "--from", "/in/{bundle.payload}", "--to", "/restore"]
+user = "10001:10001"                          # owner of the private input copy
+mounts = { "/in" = "bundle", "/restore" = "generation:data" }
+effect = "data"
+exit = { 0 = "ok", 1 = "failed", 2 = "refused" }
+operator = false
+timeout = "60m"
+
+[tasks.bootstrap-config]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "bootstrap", "--config", "/in/{input.config}"]
+user = "10001:10001"                          # owner of the private input copy
+mounts = { "/in" = "input:config" }
+max_input_bytes = 262144
+stdout = "terminal"                           # prints the single-use setup code; never recorded
+effect = "app-write"
+exit = { 0 = "ok", 1 = "refused", 2 = "refused" }
+timeout = "5m"
+
+[tasks.bootstrap-new-code]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "bootstrap", "--new-code"]
+stdout = "terminal"
+effect = "app-write"
+exit = { 0 = "ok", 1 = "refused", 2 = "refused" }
+timeout = "2m"
+
+# Outbound reconciliation: the app's own preview (no --confirm; exit 2 with outcome "preview") and its
+# confirm commands (--confirm last) are separate tasks. The preview runs the app's migration first and exits 2 for a
+# usage error too, so the preview tasks are app-write and idempotent, and `expect` tells a preview from a usage error.
+[tasks.queue-held]                            # lists held jobs: ids, kinds, attempts; no personal data
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "release"]
+effect = "app-write"
+idempotent = true
+stdout = "record"
+expect = { json = { outcome = "preview" } }
+exit = { 2 = "ok" }
+timeout = "2m"
+
+[tasks.queue-status]                          # the pause and the counts `queue-resume` would release
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "resume"]
+effect = "app-write"
+idempotent = true
+stdout = "record"
+expect = { json = { outcome = "preview" } }
+exit = { 2 = "ok" }
+timeout = "2m"
+
+[tasks.queue-release-job]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "release", "--job", "{arg.job}", "--confirm"]
+args = { job = '^[A-Za-z0-9-]{1,64}$' }
+effect = "app-write"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused" }
+timeout = "2m"
+
+[tasks.queue-release-all]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "release", "--all", "--confirm"]
+effect = "app-write"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused" }
+timeout = "2m"
+
+[tasks.queue-drop-job]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "drop", "--job", "{arg.job}", "--confirm"]
+args = { job = '^[A-Za-z0-9-]{1,64}$' }
+effect = "app-write"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused" }
+timeout = "2m"
+
+[tasks.queue-resume]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "resume", "--confirm"]
+clears_hold = true
+effect = "app-write"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused" }            # 1: an attempt still awaits its decision
+timeout = "2m"
+
+# ---------------------------------------------------------------- slow tasks of the session-loss suite
+[tasks.slow-read]
+service = "app"
+mode = "run"
+argv = ["sh", "-c", "trap 'exit 143' TERM; sleep {arg.seconds} & wait $!"]
+args = { seconds = '^[0-9]{1,3}$' }
+effect = "read"
+exit = { 0 = "ok" }
+timeout = "10m"
+
+[tasks.slow-write]
+service = "app"
+mode = "run"
+argv = ["sh", "-c", "trap 'exit 143' TERM; sleep {arg.seconds} & wait $!"]
+args = { seconds = '^[0-9]{1,3}$' }
+effect = "app-write"
+idempotent = true
+exit = { 0 = "ok" }
+timeout = "10m"
+
+[tasks.slow-terminal]                         # a terminal task: the CLI itself holds the lock and runs it
+service = "app"
+mode = "run"
+argv = ["sh", "-c", "trap 'exit 143' TERM; echo waiting; sleep {arg.seconds} & wait $!; echo woke"]
+args = { seconds = '^[0-9]{1,3}$' }
+stdout = "terminal"
+effect = "app-write"
+idempotent = true
+exit = { 0 = "ok" }
+timeout = "10m"

@@ -1,0 +1,321 @@
+# fx-lite-secrets: the fx-lite fixture manifest with a secret canary, used only by the secret canary and terminal
+# task suite (tests/docker/test_it_secrets.py). Differences from fixtures/fx-lite/ingat.toml: a generated file secret
+# `canary` the app reads at /run/secrets/canary (the secrets_dir param FXLITE_SECRETS), and test-only tasks that put
+# the app's secret values into every captured text stream (record, json, stderr), into a data file the backup copies,
+# and a `stdin = "terminal"` task that prompts at the app's own no-echo prompt. The service prints both secret
+# values in its log (compose.yaml), so `logs` must redact them.
+manifest = 1
+app = "fx-lite"
+requires_ingat = ">=0.1,<1"
+
+[source]
+kind = "git"
+release = "commit"                            # one image per release commit
+
+[compose]
+files = ["compose.yaml"]
+
+[params]
+FXLITE_IMAGE    = { required = true }         # the instance names the image (CI and selftest: the tool image by digest)
+FXLITE_RELEASE  = { kind = "template", value = "{release}" }
+FXLITE_ENV_FILE = { kind = "env_file" }
+FXLITE_DATA_DIR = { kind = "store", store = "data" }
+FXLITE_PORT     = { kind = "port" }
+FXLITE_SECRETS  = { kind = "secrets_dir" }
+
+[app_env]
+param = "FXLITE_ENV_FILE"
+# Fixed by the image, or used only by a development seed command that never runs in production.
+# Any other undeclared key is refused anyway.
+forbidden = ["APP_ENV", "HOST", "PORT", "DATA_DIR", "DATABASE_PATH", "SEED_PASSWORD"]
+
+[app_env.keys]
+ALLOWED_ORIGINS  = { required = true }
+BASE_URL         = { required = true }
+MAIL_SENDER      = { required = true }
+PROXY_ADDRESS    = { required = true }
+SECURE_COOKIES   = { allowed = ["true", "false"] }
+SESSION_HOURS    = { pattern = '^[0-9]{1,4}$' }
+DELIVERY_MODE    = { default = "capture", allowed = ["capture", "smtp"], owner_gated = true }
+DELIVERY_ENABLED = { allowed = ["true"], owner_gated = true }   # real sending needs both owner-gated keys
+MAIL_HOST        = { pattern = '^[A-Za-z0-9.-]{1,253}$' }
+MAIL_PORT        = { pattern = '^[0-9]{1,5}$' }
+MAIL_SECURITY    = { allowed = ["starttls", "tls"] }
+MAIL_USER        = { secret = true }
+MAIL_PASSWORD    = { secret = true }
+JOBS             = { allowed = ["off"], tool_managed = true }
+
+[secrets.canary]
+generate = "alnum32"
+mode = "0444"                                 # read by the service user through the bind mount
+
+[stores.data]
+kind = "bind"
+param = "FXLITE_DATA_DIR"
+owner = "10001:10001"                         # the service user
+mode = "0700"
+local_only = true                             # SQLite WAL: never SMB/NFS or a synchronized folder
+online_backup = true                          # SQLite online backup
+
+[services]
+writers = ["app"]                             # web app, in-process job runner and the SQLite store in one container
+
+[schema]
+probe = "ready"
+expected = "schema.expected"
+actual = "schema.actual"
+migrates_on_start = true                      # every image change is data-changing
+
+[probes.ready]
+exec = "app"
+argv = ["fx-lite", "probe", "http://127.0.0.1:3000/api/ready"]
+expect = { json = { status = "ready", data_writable = true } }
+stable = "5s"
+timeout = "120s"
+
+[probes.edge-live]
+http = { port_param = "FXLITE_PORT", path = "/api/health" }
+expect = { status = 200, json = { status = "ok" } }
+timeout = "30s"
+
+[[activate]]
+services = ["app"]
+wait = ["ready", "edge-live"]
+reopens_writes = true
+
+[[smoke]]
+name = "live"
+http = { port_param = "FXLITE_PORT", path = "/api/health" }
+expect = { status = 200, json = { status = "ok" } }
+[[smoke]]
+name = "ready"
+http = { port_param = "FXLITE_PORT", path = "/api/ready" }
+expect = { status = 200, json = { status = "ready", data_writable = true } }
+
+[[install]]
+task = "migrate"                              # once and alone: concurrent first opens can fail with SQLITE_BUSY
+[[install]]
+start = ["app"]
+wait = ["ready", "edge-live"]
+[[install]]
+pause = "Copy the bootstrap file into the Ingat inbox (INGAT_ROOT/inbox/), run `ingat task {instance} bootstrap-config --input config=<file>` (it prints a single-use setup code to the terminal that runs it and never records it), complete setup in the browser, then run `ingat resume {instance}`."
+allow_tasks = ["bootstrap-config", "bootstrap-new-code"]
+
+[deploy]
+migrate = "migrate"                           # explicit one-off before the start, so the start applies nothing
+
+[backup]
+strategy = "tasks"
+steps = ["backup"]
+verify = []                                   # hash-only until the app has a read-only verify command
+
+[restore]
+start = []
+steps = ["restore"]
+post = []
+checks = []
+activate = true                               # start the app on the new generation in isolation and wait for `ready`
+
+[rollback]
+env = { JOBS = "off" }                        # a schema older than the outbound pause cannot hold paused jobs
+
+[drill]                                       # throwaway secrets; mail credentials and owner-gated keys are dropped in isolation
+checks = []
+record = []
+activate = true
+min_free_memory = "512m"
+
+[holds.app]
+DELIVERY_MODE = "capture"
+JOBS = "off"
+
+[side_effects]
+kind = "outbound"
+restore_via_app = true
+after_restore = "held"
+clear_hold = "queue-resume"
+single_active = true                          # Planned M4: never two queues on one data lineage
+restore_notice = "Outbound delivery is paused (reason: restored) and queued sends are held. List them with `ingat task {instance} queue-held`, check the mailbox, then use queue-release-job / queue-release-all / queue-drop-job, check `ingat task {instance} queue-status`, and finally run queue-resume."
+
+# ---------------------------------------------------------------- tasks (all `run`: a second SQLite process is safe under WAL)
+[tasks.migrate]
+service = "app"
+mode = "run"
+image = "candidate"
+argv = ["fx-lite", "migrate"]
+effect = "data"
+idempotent = true                             # exclusive lock, one transaction; a re-run applies nothing
+exit = { 0 = "ok" }                           # any other exit is unknown (data effect)
+operator = false
+timeout = "15m"
+
+[tasks.backup]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "backup", "--to", "/out"]
+user = "10001:10001"                          # owner of the stage
+mounts = { "/out" = "stage" }                 # outside the data directory, as the app requires
+effect = "app-write"                          # records its outcome in the app's own backup bookkeeping
+idempotent = true                             # required for a non-read backup task; a redo writes into a fresh stage
+operator = false                              # runs only inside a backup: alone it would leave a data copy nothing prunes
+stdout = "json"
+exit = { 0 = "ok", 1 = "failed", 2 = "refused" }
+timeout = "60m"
+
+[tasks.restore]                               # runs only in the isolated project: internal network, read-only root
+service = "app"
+mode = "run"
+image = "bundle"
+argv = ["fx-lite", "restore", "--from", "/in/{bundle.payload}", "--to", "/restore"]
+user = "10001:10001"                          # owner of the private input copy
+mounts = { "/in" = "bundle", "/restore" = "generation:data" }
+effect = "data"
+exit = { 0 = "ok", 1 = "failed", 2 = "refused" }
+operator = false
+timeout = "60m"
+
+[tasks.bootstrap-config]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "bootstrap", "--config", "/in/{input.config}"]
+user = "10001:10001"                          # owner of the private input copy
+mounts = { "/in" = "input:config" }
+max_input_bytes = 262144
+stdout = "terminal"                           # prints the single-use setup code; never recorded
+effect = "app-write"
+exit = { 0 = "ok", 1 = "refused", 2 = "refused" }
+timeout = "5m"
+
+[tasks.bootstrap-new-code]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "bootstrap", "--new-code"]
+stdout = "terminal"
+effect = "app-write"
+exit = { 0 = "ok", 1 = "refused", 2 = "refused" }
+timeout = "2m"
+
+# Outbound reconciliation: the app's own preview (no --confirm; exit 2 with outcome "preview") and its
+# confirm commands (--confirm last) are separate tasks. The preview runs the app's migration first and exits 2 for a
+# usage error too, so the preview tasks are app-write and idempotent, and `expect` tells a preview from a usage error.
+[tasks.queue-held]                            # lists held jobs: ids, kinds, attempts; no personal data
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "release"]
+effect = "app-write"
+idempotent = true
+stdout = "record"
+expect = { json = { outcome = "preview" } }
+exit = { 2 = "ok" }
+timeout = "2m"
+
+[tasks.queue-status]                          # the pause and the counts `queue-resume` would release
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "resume"]
+effect = "app-write"
+idempotent = true
+stdout = "record"
+expect = { json = { outcome = "preview" } }
+exit = { 2 = "ok" }
+timeout = "2m"
+
+[tasks.queue-release-job]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "release", "--job", "{arg.job}", "--confirm"]
+args = { job = '^[A-Za-z0-9-]{1,64}$' }
+effect = "app-write"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused" }
+timeout = "2m"
+
+[tasks.queue-release-all]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "release", "--all", "--confirm"]
+effect = "app-write"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused" }
+timeout = "2m"
+
+[tasks.queue-drop-job]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "drop", "--job", "{arg.job}", "--confirm"]
+args = { job = '^[A-Za-z0-9-]{1,64}$' }
+effect = "app-write"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused" }
+timeout = "2m"
+
+[tasks.queue-resume]
+service = "app"
+mode = "run"
+argv = ["fx-lite", "queue", "resume", "--confirm"]
+clears_hold = true
+effect = "app-write"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused" }            # 1: an attempt still awaits its decision
+timeout = "2m"
+
+# ---------------------------------------------------------------- test-only tasks of the secret canary suite
+# canary-record, canary-json and canary-fail print the app env secret, its URL-encoded form and the file secret on
+# stdout and stderr (canary-fail then exits 3); canary-stash writes them, with other bytes, into a data file the backup
+# copies; canary-prompt prints a fresh setup token, then reads a password at getpass's no-echo prompt; canary-long
+# ends each of its long lines with the app env secret, so read edges fall inside the value.
+[tasks.canary-record]
+service = "app"
+mode = "run"
+argv = ["python3", "-c", 'import os,sys,json,urllib.parse as u; m=sys.argv[1]; p=os.environ["MAIL_PASSWORD"]; f=open("/run/secrets/canary").read(); q=u.quote(p, safe=""); print(json.dumps(dict(outcome="ok", p=p, q=q, f=f)) if m=="json" else " ".join(["leak-out", p, q, f])); print("leak-err", p, q, f, file=sys.stderr); sys.exit(3 if m=="fail" else 0)', "record"]
+effect = "read"
+stdout = "record"
+exit = { 0 = "ok", 3 = "failed" }
+timeout = "2m"
+
+[tasks.canary-json]
+service = "app"
+mode = "run"
+argv = ["python3", "-c", 'import os,sys,json,urllib.parse as u; m=sys.argv[1]; p=os.environ["MAIL_PASSWORD"]; f=open("/run/secrets/canary").read(); q=u.quote(p, safe=""); print(json.dumps(dict(outcome="ok", p=p, q=q, f=f)) if m=="json" else " ".join(["leak-out", p, q, f])); print("leak-err", p, q, f, file=sys.stderr); sys.exit(3 if m=="fail" else 0)', "json"]
+effect = "read"
+stdout = "json"
+expect = { json = { outcome = "ok" } }
+exit = { 0 = "ok", 3 = "failed" }
+timeout = "2m"
+
+[tasks.canary-fail]
+service = "app"
+mode = "run"
+argv = ["python3", "-c", 'import os,sys,json,urllib.parse as u; m=sys.argv[1]; p=os.environ["MAIL_PASSWORD"]; f=open("/run/secrets/canary").read(); q=u.quote(p, safe=""); print(json.dumps(dict(outcome="ok", p=p, q=q, f=f)) if m=="json" else " ".join(["leak-out", p, q, f])); print("leak-err", p, q, f, file=sys.stderr); sys.exit(3 if m=="fail" else 0)', "fail"]
+effect = "read"
+stdout = "record"
+exit = { 0 = "ok", 3 = "failed" }
+timeout = "2m"
+
+[tasks.canary-stash]
+service = "app"
+mode = "run"
+argv = ["python3", "-c", 'import os,urllib.parse as u; p=os.environ["MAIL_PASSWORD"].encode(); f=open("/run/secrets/canary","rb").read(); d=bytes(range(256)) + b"\n" + p + b"\r\n" + u.quote(p, safe="").encode() + b"\x00" + f + b"\x1b[0m" + p[::-1]; t="/data/files/canary.bin.tmp"; open(t,"wb").write(d); os.replace(t, "/data/files/canary.bin"); print(len(d))']
+effect = "app-write"
+idempotent = true                             # rewrites the same bytes
+exit = { 0 = "ok" }
+timeout = "2m"
+
+[tasks.canary-prompt]
+service = "app"
+mode = "run"
+argv = ["python3", "-c", 'import getpass,hashlib,secrets,sys; print("stdin-tty:", sys.stdin.isatty(), flush=True); print("setup-token:", secrets.token_urlsafe(18), flush=True); v=getpass.getpass("New password: "); print("received", len(v), hashlib.sha256(v.encode()).hexdigest()[:16], flush=True)']
+stdin = "terminal"                            # the password is typed at the app's prompt, never an argument
+stdout = "terminal"
+effect = "read"                               # class B: only the terminal rule can refuse it without a TTY
+exit = { 0 = "ok" }
+timeout = "5m"
+
+[tasks.canary-long]                           # 14 lines of about 64 KiB, each ending in the secret: chunk edges
+service = "app"
+mode = "run"
+argv = ["python3", "-c", 'import os; p=os.environ["MAIL_PASSWORD"]; [print("x" * (65536 - 3 * i) + p, flush=True) for i in range(14)]']
+effect = "read"
+stdout = "record"
+exit = { 0 = "ok" }
+timeout = "2m"

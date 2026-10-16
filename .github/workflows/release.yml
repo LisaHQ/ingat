@@ -1,0 +1,160 @@
+# Release on a tag vX.Y.Z (CLAUDE.md §9; ARCHITECTURE.md §3.1, §3.6; ADR-0029). The ci workflow runs inside this run:
+# static checks, unit tests, the one multi-arch build of the image, the three real-Docker lanes on that image, and
+# tested.json from the lanes that passed. The release image is the tested image plus one final layer holding that
+# tested.json. It is pushed by digest with provenance and SBOM attestations, checked per architecture against the tested
+# image, and only then tagged with the version. A DRAFT release gets install.sh, facts.sh, per-architecture docker save
+# tarballs of the release image, tested.json, the SBOM and SHA256SUMS. The owner reviews the draft, completes its
+# pending notes and publishes it.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+    secrets:
+      INGAT_FORBIDDEN_NAMES: ${{ secrets.INGAT_FORBIDDEN_NAMES }}
+
+  release:
+    needs: ci
+    if: ${{ !cancelled() }} # the arm64 lane may fail: its verdict only decides whether tested.json lists arm64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write # the draft GitHub release
+      packages: write # the image push to ghcr.io (provenance and SBOM are BuildKit attestations in the image index)
+    env:
+      IMAGE: ghcr.io/lisahq/ingat
+      TESTED: ${{ needs.ci.outputs.image-index }}
+      IMAGE_SUMS: ${{ needs.ci.outputs.image-sums }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: lane-*
+          path: out
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tested-json
+          path: ${{ runner.temp }}/tested
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-oci
+          path: ${{ runner.temp }}/image
+      - name: version, required lanes, tested image and tested.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/ingat/__init__.py)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match version $version" >&2; exit 1; }
+          # A re-run never moves the image tag of a version that already has a (draft or published) release.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then echo "release $GITHUB_REF_NAME exists" >&2; exit 1; fi
+          for lane in e24-amd64 e29-amd64; do
+            grep -q '"result":"PASS"' "out/lane-$lane.json" || { echo "lane $lane did not pass: no release" >&2; exit 1; }
+          done
+          case "$TESTED" in sha256:*) ;; *) echo "the ci run reported no tested image" >&2; exit 1 ;; esac
+          (cd "$RUNNER_TEMP/image" && printf '%s\n' "$IMAGE_SUMS" | grep ' ingat-oci\.tar$' | sha256sum -c --strict)
+          mkdir "$RUNNER_TEMP/oci" "$RUNNER_TEMP/context"
+          tar -xf "$RUNNER_TEMP/image/ingat-oci.tar" -C "$RUNNER_TEMP/oci"
+          cp "$RUNNER_TEMP/tested/tested.json" tested.json
+          # The embedded tested.json lists exactly the lanes whose verdict files in this run say PASS, and no other.
+          python3 tests/harness/tested_json.py out | cmp -s - tested.json \
+            || { echo "tested.json is not the one the lane verdicts of this run give" >&2; exit 1; }
+          cp tested.json "$RUNNER_TEMP/context/tested.json"
+          cat tested.json
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      # The release build runs nothing in the image (FROM and COPY only), so it needs no emulator; the SBOM scanner runs
+      # on the build platform (BuildKit v0.33.1 frontend/dockerfile/builder: scannerPlatform = BuildPlatforms[0]).
+      # BuildKit and the SBOM scanner are pinned by digest.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.33.1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: build the release image (the tested image plus the tested.json layer), push it by digest, untagged
+        env:
+          SBOM_SCANNER: docker.io/docker/buildkit-syft-scanner:1.12.0@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 -f image/release.Dockerfile \
+            --build-context "tested=oci-layout://$RUNNER_TEMP/oci@$TESTED" --provenance=mode=max \
+            --attest "type=sbom,generator=$SBOM_SCANNER" \
+            --output "type=image,name=$IMAGE,push-by-digest=true,push=true" --metadata-file "$RUNNER_TEMP/build.json" \
+            "$RUNNER_TEMP/context"
+          digest=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$RUNNER_TEMP/build.json")
+          echo "DIGEST=$digest" >> "$GITHUB_ENV"
+      - name: check each architecture against the tested image, save its tarball, then tag the version
+        run: |
+          docker buildx imagetools inspect --raw "$IMAGE@$DIGEST" > "$RUNNER_TEMP/index.json"
+          for arch in amd64 arm64; do
+            m=$(python3 -c 'import json, sys
+          (m,) = [d["digest"] for d in json.load(open(sys.argv[1]))["manifests"]
+                  if d.get("platform", {}).get("os") == "linux" and d["platform"].get("architecture") == sys.argv[2]]
+          print(m)' "$RUNNER_TEMP/index.json" "$arch")
+            docker pull -q --platform "linux/$arch" "$IMAGE@$m"
+            # The local tag names this architecture's manifest until the next one moves it (no rmi: on a containerd
+            # image store removing the tag already removes the image pulled by digest).
+            docker tag "$IMAGE@$m" "$IMAGE:$VERSION"
+            docker save -o "ingat-$VERSION-$arch.tar" "$IMAGE:$VERSION"
+            python3 tests/harness/image_tar.py check-release "$RUNNER_TEMP/oci" "$TESTED" "$arch" \
+              "ingat-$VERSION-$arch.tar" tested.json
+          done
+          # One source makes a carbon copy, so the version tag names exactly the index checked above.
+          docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE@$DIGEST"
+          tagged=$(docker buildx imagetools inspect --raw "$IMAGE:$VERSION" | sha256sum | cut -d' ' -f1)
+          [ "sha256:$tagged" = "$DIGEST" ] || { echo "$IMAGE:$VERSION is sha256:$tagged, not $DIGEST" >&2; exit 1; }
+      - name: SBOM and SHA256SUMS
+        run: |
+          docker buildx imagetools inspect "$IMAGE@$DIGEST" --format '{{ json .SBOM }}' > "ingat-$VERSION-sbom.json"
+          sha256sum install.sh facts.sh "ingat-$VERSION-amd64.tar" "ingat-$VERSION-arm64.tar" tested.json \
+            "ingat-$VERSION-sbom.json" > SHA256SUMS
+          printf '%s  image:%s:%s\n' "${DIGEST#sha256:}" "$IMAGE" "$VERSION" >> SHA256SUMS
+          cat SHA256SUMS
+      - name: draft release notes (facts of this run only; unknown checks stay pending)
+        run: |
+          {
+            echo "Ingat $VERSION. Draft created by the release workflow; the owner completes the pending items and publishes it."
+            echo
+            echo "- Source: $GITHUB_SHA ($GITHUB_REF_NAME)"
+            echo "- Tested image: index \`$TESTED\`, built once in this run (linux/amd64, linux/arm64); each lane loaded the tarball of its architecture:"
+            printf '%s\n' "$IMAGE_SUMS" | awk '{ printf "  - `%s` (artifact of this run): sha256 `%s`\n", $2, $1 }'
+            echo "- Release image: \`$IMAGE@$DIGEST\` (linux/amd64, linux/arm64), with provenance and SBOM attestations. It is the tested image plus one final layer that adds \`tested.json\`; this run checked for each architecture that every other layer and the image configuration are the tested ones and that the final layer holds only \`tested.json\`."
+            echo "- State schema: $(sed -n 's/^STATE_SCHEMA = //p' src/ingat/model/records.py)"
+            echo "- Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            python3 -c 'import json, pathlib
+          print("\n## Support matrix (tested.json: the lanes that passed in this run)\n")
+          rows = json.load(open("tested.json"))
+          for e in rows:
+              print("- Engine {engine} on {arch} with docker CLI {cli} and Compose {compose}".format(**e))
+          print("- none" if not rows else "- Gate tier 2 also needs a host certification of the platform build")
+          print("\n## Validation\n")
+          for lane in ("e24-amd64", "e29-amd64", "e29-arm64"):
+              p = pathlib.Path(f"out/lane-{lane}.json")
+              print(f"- CI lane {lane}: " + (json.loads(p.read_text())["result"] if p.exists() else "BLOCKED (no verdict)"))
+          print("- Host certifications: pending (none is part of this run)")
+          print("\n## Pending before publishing\n")
+          print("- State-schema changes and migration steps: pending")
+          print("- Known limitations: pending")'
+          } > notes.md
+          cat notes.md
+      - name: draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Ingat $VERSION" --notes-file notes.md \
+            install.sh facts.sh "ingat-$VERSION-amd64.tar" "ingat-$VERSION-arm64.tar" tested.json \
+            "ingat-$VERSION-sbom.json" SHA256SUMS

@@ -1,0 +1,11 @@
+instance = 1
+name = "site"
+app = "site"
+environment = "production"
+disposable = true
+
+[source]
+kind = "image"
+
+[params]
+SITE_PORT = "20100"

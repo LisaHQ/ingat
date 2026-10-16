@@ -1,0 +1,6 @@
+*
+!src/
+!fixtures/
+!image/
+**/__pycache__
+**/*.pyc

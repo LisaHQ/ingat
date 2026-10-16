@@ -1,0 +1,49 @@
+# fx-web2: the fx-web fixture manifest with a second stateless service (`docs`) in the same activation group, for the
+# recreate-scope suite (tests/docker/test_it_recreate.py); tests/data/fx-web2/compose.yaml is its Compose file.
+manifest = 1
+app = "fx-web"
+requires_ingat = ">=0.1,<1"
+
+[source]
+kind = "git"
+release = "commit"
+
+[compose]
+files = ["compose.yaml"]
+
+[params]
+FXWEB_IMAGE     = { required = true }                     # the instance names the image (the tool image)
+FXWEB_PORT      = { kind = "port" }
+FXWEB_DOCS_PORT = { kind = "port" }
+
+[services]
+stateless = ["site", "docs"]
+
+[probes.ready]
+http = { port_param = "FXWEB_PORT", path = "/" }
+expect = { status = 200, body_contains = "fx-web" }
+timeout = "60s"
+
+[probes.docs-ready]
+http = { port_param = "FXWEB_DOCS_PORT", path = "/" }
+expect = { status = 200, body_contains = "fx-web" }
+timeout = "60s"
+
+[[activate]]
+services = ["site", "docs"]
+wait = ["ready", "docs-ready"]
+
+[[smoke]]
+name = "health"
+http = { port_param = "FXWEB_PORT", path = "/health" }
+expect = { status = 200, json = { status = "ok" } }
+[[smoke]]
+name = "docs-health"
+http = { port_param = "FXWEB_DOCS_PORT", path = "/health" }
+expect = { status = 200, json = { status = "ok" } }
+
+[backup]
+strategy = "none"
+
+[side_effects]
+kind = "none"

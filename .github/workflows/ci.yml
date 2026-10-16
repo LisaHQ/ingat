@@ -1,0 +1,167 @@
+# T0 static and unit tests; one multi-arch build of the tool image per pipeline (ADR-0029); the T1 real-Docker lanes on
+# that exact image (ARCHITECTURE.md §10.1); then tested.json from the lanes that passed. The release workflow calls this
+# workflow on a tag and publishes the tested image plus one final layer holding the tested.json of its own run. The
+# nightly run (T2) adds the generated crash matrix to the e24-amd64 and e29-amd64 lanes.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_call:
+    secrets:
+      INGAT_FORBIDDEN_NAMES:
+        required: false
+    outputs:
+      image-index:
+        description: Index digest of the multi-arch image built once in this run and tested by the lanes
+        value: ${{ jobs.build.outputs.index }}
+      image-sums:
+        description: SHA256SUMS lines of that image's OCI archive and per-architecture docker tarballs
+        value: ${{ jobs.build.outputs.sums }}
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --require-hashes --no-deps -r requirements-dev.txt
+      - run: ruff format --check src tests fixtures
+      - run: ruff check src tests fixtures
+      - run: mypy
+      - name: static lints (consumer names come from a secret; skipped without it)
+        run: python -m unittest discover -s tests/static -t . -v
+        env:
+          PYTHONPATH: src
+          INGAT_FORBIDDEN_NAMES: ${{ secrets.INGAT_FORBIDDEN_NAMES }}
+      - run: python -m unittest discover -s tests/unit -t . -v
+        env:
+          PYTHONPATH: src
+
+  # The image is built once (ADR-0029): one buildx build of both architectures writes an OCI layout whose index digest
+  # names the tested image. The docker tarball of each architecture is not a second build: tests/harness/image_tar.py
+  # re-packages that build's own config and layer blobs, each checked against its digest, so every lane loads exactly
+  # the layers of the tested index, and the release adds tested.json on top of the same index.
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      index: ${{ steps.image.outputs.index }}
+      sums: ${{ steps.image.outputs.sums }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The emulator that builds the arm64 variant and the BuildKit that builds the image are pinned by digest.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.33.1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+      - name: one multi-arch build (OCI layout), then one docker tarball per architecture from its blobs
+        id: image
+        run: |
+          d=$RUNNER_TEMP/image
+          mkdir -p "$d/oci"
+          BUILD_CMD="buildx build" sh image/build.sh ingat:tested --platform linux/amd64,linux/arm64 \
+            --provenance=mode=max --output "type=oci,dest=$d/ingat-oci.tar" --metadata-file "$d/build.json"
+          index=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$d/build.json")
+          tar -xf "$d/ingat-oci.tar" -C "$d/oci"
+          for arch in amd64 arm64; do
+            python3 tests/harness/image_tar.py docker-tar "$d/oci" "$index" "$arch" "$d/ingat-$arch.tar" ingat:tested
+          done
+          (cd "$d" && sha256sum ingat-oci.tar ingat-amd64.tar ingat-arm64.tar) > "$d/SHA256SUMS"
+          cat "$d/SHA256SUMS"
+          { echo "index=$index"; echo "sums<<EOF"; cat "$d/SHA256SUMS"; echo EOF; } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-oci
+          path: ${{ runner.temp }}/image/ingat-oci.tar
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-amd64
+          path: ${{ runner.temp }}/image/ingat-amd64.tar
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-arm64
+          path: ${{ runner.temp }}/image/ingat-arm64.tar
+          if-no-files-found: error
+          compression-level: 0
+
+  lane:
+    needs: [static, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { lane: e24-amd64, runner: ubuntu-24.04, dind: DIND_24, arch: amd64, nightly: "1" }
+          - { lane: e29-amd64, runner: ubuntu-24.04, dind: DIND_29, arch: amd64, nightly: "1" }
+          - { lane: e29-arm64, runner: ubuntu-24.04-arm, dind: DIND_29, arch: arm64, nightly: "" }
+    runs-on: ${{ matrix.runner }}
+    # T1 runs its modules in parallel runners (tests/harness/lane.sh); the nightly crash matrix takes about 45 minutes
+    # in a runner of its own.
+    timeout-minutes: ${{ github.event_name == 'schedule' && matrix.nightly && 100 || 45 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-${{ matrix.arch }}
+          path: ${{ runner.temp }}/image
+      - name: real-Docker lane on the tested image of this architecture
+        run: |
+          # Exactly this lane's tarball against the build job's sums (no line for it verifies nothing and fails).
+          (cd "$RUNNER_TEMP/image" && printf '%s\n' "$IMAGE_SUMS" | grep ' ingat-${{ matrix.arch }}\.tar$' | sha256sum -c --strict)
+          sh tests/harness/lane.sh "$(sed -n 's/^${{ matrix.dind }}=//p' image/versions.lock)" "${{ matrix.lane }}" \
+            'test_*.py' "$RUNNER_TEMP/image/ingat-${{ matrix.arch }}.tar"
+        env:
+          INGAT_FORBIDDEN_NAMES: ${{ secrets.INGAT_FORBIDDEN_NAMES }}
+          IMAGE_SUMS: ${{ needs.build.outputs.sums }}
+          INGAT_TEST_FULL_MATRIX: ${{ github.event_name == 'schedule' && matrix.nightly || '' }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: lane-${{ matrix.lane }}
+          # Only this lane's own files, so merging the lane artifacts never replaces another lane's verdict.
+          path: |
+            out/lane-${{ matrix.lane }}.json
+            out/spike-${{ matrix.lane }}/
+          if-no-files-found: warn
+
+  tested:
+    needs: lane
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: lane-*
+          path: out
+          merge-multiple: true
+      - run: python3 tests/harness/tested_json.py out > tested.json && cat tested.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-json
+          path: tested.json

@@ -10,11 +10,12 @@
 
 | What | State |
 |---|---|
-| Phase | **Design only.** This repository holds the design package; no code exists. |
-| Implemented | Nothing. Nothing of Ingat has run on Docker or on a host. |
-| Decided | The architecture, the safety floors, the approval classes, the manifest format (a draft until the M2 exit gate freezes it), the milestones and the ADRs in [`docs/adr/`](docs/adr/README.md). Owner decisions OD-1 (the name Ingat), OD-2 (the LisaHQ namespace) and OD-3 (a public repository and image with generic content only), all on 2026-10-14. |
-| Open | Owner decisions OD-4 to OD-11, recorded in the owner's private notes. The docs tag every dependency on one as **Open OD-n**. |
-| Host facts | The first real deployment is a Synology NAS on DSM 7.4.1 with Container Manager 24.0.2; a read-only probe of it supplied the facts of the first platform profile on 2026-10-14 ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11.2). Generic Linux hosts are covered by the CI lanes from M1. The runtime behaviours the design depends on are M0 spike items ([`docs/ROADMAP.md`](docs/ROADMAP.md)); none is verified yet. |
+| Phase | **M0 and M1 in progress.** The M0 repository skeleton (design docs, ADRs, the image build files, CI and release workflows, `facts.sh`, the spike script) and the M1 code exist. Nothing has run in CI on GitHub or on a host yet, no release is published, and no exit gate has passed ([`docs/ROADMAP.md`](docs/ROADMAP.md)). |
+| Implemented in code (M1) | `install.sh` and the root-only wrapper; `host init`, `host check`, the version gate and `selftest` (`--offline`, `--host`); `init` and `validate`; `prepare` (pulls of CI-built images, pinned by ID and digest, with the label check that binds the commit); `deploy` of git-sourced stateless and bind-store apps: first install with its steps and pauses, data-changing update (freeze, sealed and verified pre-change bundle, migrate, activation), config-only change and the way forward from a frozen update; the detached executor with follower, `attach`, `cancel`, `resume`, `abandon`, auto-abandon and the orphan check; `start`, `stop`, `restart` and declared tasks (terminal tasks in the CLI); `backup`, `verify`, the isolated drill, `prune --bundles` and the `scheduled` jobs; `status`, `doctor`, `list`, `ps`, `logs`, `history`, `bundles`; the Compose policy and raw-text rules. Not yet: `doctor`'s comparison of the observed proxy peer with the configured value (M1 scope); restores, volume stores, data services, image sources, `exec` tasks, file streams, log snapshots, deploy prechecks and postchecks, a task-based `[schema]`, `secret set`, class D and `plan`/`apply` (M2 and later). |
+| Verification | Local scratch Docker daemons only (upstream `docker:24.0.2-dind` and `docker:29.9.0-dind`), during development: static lints, unit tests, real-Docker tests of the adapters, executor, safety floors, planners, diagnostics, selftest and CLI, and the integration suites through the installed wrapper (lifecycle loop, no trace, crash matrix with the full generated matrix, session loss, secret canary and terminal tasks, version gate, upgrade, recreate scope, isolation). This is local evidence, not a CI verdict: `tested.json` in the source tree is empty, and the upgrade suite's previous-release case is `BLOCKED` until a release exists. |
+| Decided | The architecture, the safety floors, the approval classes, the manifest format (a draft until the M2 exit gate freezes it), the milestones and the ADRs in [`docs/adr/`](docs/adr/README.md). Owner decisions OD-1 (the name Ingat), OD-2 (the LisaHQ namespace) and OD-3 (a public repository and image with generic content only), all on 2026-10-14, and OD-11 (app images are built in each app's CI, [ADR-0026](docs/adr/0026-app-images-built-in-app-ci.md)) on 2026-10-15. |
+| Open | Owner decisions OD-4 to OD-10, recorded in the owner's private notes; the docs tag every dependency on one as **Open OD-n**. The exit-gate items that need the owner's host and CI: the first CI runs (and with them `tested.json` and the arm64 verdict), `facts.sh` and the spike on the first host, the first host certification (`selftest --host`), `lite-test` on the first host with its scheduled jobs, a drill and an update, and the SQLite consumer's manifest and CI image publishing in its own repository. |
+| Host facts | The first real deployment is a Synology NAS on DSM 7.4.1 with Container Manager 24.0.2; a read-only probe of it supplied the facts of the first platform profile on 2026-10-14 ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11.2). Generic Linux hosts are covered by the CI lanes from M1. The runtime behaviours the design depends on are M0 spike items ([`docs/ROADMAP.md`](docs/ROADMAP.md)); none is verified on the first host or in CI yet. |
 | License | [Apache License 2.0](LICENSE). |
 
 Ingat is rebuilt from scratch and replaces an earlier in-house deployment controller. It has **no compatibility** with it: no shared labels, roots, records, bundles, volumes or images, and it reads none of its formats. Taking over a deployment made outside Ingat is a product feature (adoption, below).
@@ -45,18 +46,18 @@ The full feature set is committed scope through M4.
 
 | Milestone | Goal | Estimate |
 |---|---|---|
-| M0 Decisions and host facts | Host facts certified by `facts.sh`, runtime spike on the first host and in CI, image build location decided (OD-11) | 1 week |
+| M0 Decisions and host facts | Host facts certified by `facts.sh`, runtime spike on the first host and in CI, image build location decided (OD-11, decided 2026-10-15) | 1 week |
 | M1 Walking skeleton: first real consumer | `lite-test` (the SQLite consumer) on the first host, the first real deployment on a Synology NAS (a support-tier-2 platform), end to end through the detached executor; the CI support-tier-1 lanes cover generic Linux | 3.5 weeks |
 | M2 PostgreSQL consumer staging and restores | `pg-staging` on the first host (the Synology NAS); restores into a new generation for both consumers; plan hand-over to agents; manifest schema frozen | 2.5 weeks |
 | M3 PostgreSQL consumer production readiness | Rollback, purge, prune, monitoring, scheduling renderers (systemd, cron, DSM), conformance, docs; `pg-prod` created (subject to owner decision OD-5) | 2.5 weeks |
 | M4 Disaster recovery, adoption and generic Linux certification | Import, cross-host restore, restore into a new instance, lineage, adoption by payload import; the generic Linux host certification (VPS or server) once such a host is available | 2.5 weeks |
 | M5 Tool evolution | Self-upgrade, state migration framework, generated reference | 1.5 weeks |
 
-MVP (M0-M2): about 5.5k runtime lines in 7 slices. Completion (M0-M5): about 8.2k lines, 14 slices, about 13.5 weeks. Durations are estimates, not commitments ([`docs/ROADMAP.md`](docs/ROADMAP.md)).
+MVP (M0-M2): about 5.5k runtime lines in 7 slices. Completion (M0-M5): about 8.2k lines, 14 slices, about 13.5 weeks. These totals predate [ADR-0028](docs/adr/0028-m1-replan-runtime-size.md), which re-planned M1 alone to about 6.6k lines; each later milestone is re-estimated when it starts. Durations are estimates, not commitments ([`docs/ROADMAP.md`](docs/ROADMAP.md)).
 
 ## The design in ten lines
 
-1. One pinned multi-arch container image (`linux/amd64` and `linux/arm64`; Python 3.13, the docker CLI, Compose v5, git, and buildx only if images are built on the host: owner decision OD-11) run by a 20-line root-only POSIX wrapper. A Linux server, a VPS and a NAS appliance run the same bytes; host Python and host Compose never matter. arm64 is claimed only for the Engine lines its CI lane passes (29.x only).
+1. One pinned multi-arch container image (`linux/amd64` and `linux/arm64`; Python 3.13, the docker CLI, Compose v5 and git; no buildx, because app images are built in each app's CI: owner decision OD-11) run by a 20-line root-only POSIX wrapper. A Linux server, a VPS and a NAS appliance run the same bytes; host Python and host Compose never matter. arm64 is claimed only for the Engine lines its CI lane passes (29.x only).
 2. Every operation that changes Docker runs in a **detached executor container** (`ingat-exec-<instance>`), so a dropped SSH session or a scheduled run can never stop a migration half-way. The CLI only plans, asks for approval and follows; it runs only terminal tasks and three short state-only commands itself.
 3. Compose always runs on **the app's own Compose files plus a generated override** that pins every service to a recorded image ID, adds stable ownership labels (never a per-deployment value, so unchanged services are never recreated), sets an explicit logging driver and binds data generations. The resolved `config` output is used only for the policy check and the fingerprint.
 4. Each app keeps its data semantics in its own image. The **app manifest** `ingat.toml` lives in the app repository, is read from the exact commit being deployed, and declares typed tasks (backup, restore, verify, migrate, checks) with exact exit-code maps.
@@ -92,11 +93,52 @@ Summary of [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11.4:
 
 Meeting these does not make a host supported: every platform build still needs its host certification, and support claims name only tested combinations.
 
+## Install
+
+No release is published yet; this is how a release installs ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3.4-§3.5). As root (`sudo -i`), with the release's `install.sh` and `SHA256SUMS` in one directory:
+
+```sh
+sh install.sh --version 0.1.0                      # generic default roots /srv/ingat and /srv/ingat-backups
+sh install.sh --version 0.1.0 --root /volume1/ingat --backups /volume1/ingat-backups   # the DSM profile
+```
+
+| Option | Meaning |
+|---|---|
+| `--version X.Y.Z` | Required. The image is pulled as `ghcr.io/lisahq/ingat@sha256:…`, the digest `SHA256SUMS` lists for that version |
+| `--root DIR`, `--backups DIR` | Absolute paths of `INGAT_ROOT` and `INGAT_BACKUPS`, characters `[A-Za-z0-9/._-]` only |
+| `--from-tar FILE` | `docker load` this release tarball (its SHA-256 must be listed in `SHA256SUMS`) instead of pulling |
+| `--link PATH` | Also create a convenience symlink to the wrapper (scheduled jobs always use the absolute wrapper path) |
+
+It creates a missing root as `root:root 0700` (`INGAT_ROOT` must be exactly that) and the labelled volume `ingat-probe`, runs `selftest --offline` with the new image, and writes the wrapper `<root>/bin/ingat` by an atomic rename. On a host that already has a wrapper it is the upgrade: it refuses while any operation is open (exit 2), runs `selftest --host` with the new image and keeps the current wrapper if that fails (exit 3), else keeps the old one as `bin/ingat.prev`. Then, once per host: `ingat host init` (type the host name to approve), `sh facts.sh [--root DIR] [--backups DIR] > facts.json` (read-only; only its `platform` part ever goes into a committed certification), and `ingat selftest --host`, which certifies the platform build for the mutating commands.
+
+## Commands (M1)
+
+Run as root through the wrapper (`/srv/ingat/bin/ingat` under the default root). Every command takes `--json` (one JSON object on stdout with `code`, `exit` and `next`); exit codes are in [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) §6, approval classes in §2. A class C command asks for the instance name (for `host init`, the host name) on a terminal and refuses without one (exit 2). The paths `init --config` and `validate` take must be absolute and under one of the roots, the only host paths the CLI container sees.
+
+| Command | What it does |
+|---|---|
+| `version` | Tool, wrapper and image versions |
+| `host init`, `host check` | Bind the root to this Docker engine and record its facts (class C); record the facts and risks as a host-check certification |
+| `init <i> --config <file> --ref <ref>` | Register an instance from its `instance.toml` (class C) |
+| `validate <repo-dir> [--instance <file>]` | Offline checks of an app repository and, optionally, an instance file |
+| `prepare <i> <ref>` | Fetch, resolve the ref, pull and pin the candidate's images (class B) |
+| `deploy <i> <ref>` | First install, data-changing update, config-only change or the way forward from frozen (class C); prepares first when needed |
+| `start\|stop\|restart <i> [<service>…]` | On the recorded deployment (class C) |
+| `task <i> <task> [--arg NAME=VALUE]… [--input NAME=FILE]…` | A declared task (class B for `read`, else C); `--input` names a file in `INGAT_ROOT/inbox/` |
+| `backup <i> [--class <class>] [--reason TEXT] [--prune]` | A sealed, verified bundle (class B; `--class` defaults to `manual`) |
+| `verify <i> <bundle>\|--latest [--restore-test]` | Re-hash and verify a bundle; `--restore-test` is the isolated drill (class B) |
+| `prune <i> --bundles [--apply]` | Retention: a dry run, or the deletions with `--apply` (class B) |
+| `resume <i>`, `abandon <i>` | Continue or close the open operation (class C) |
+| `attach <i>`, `cancel <i>` | Follow the open operation again; ask it to stop at its next safe point |
+| `status [<i>]`, `doctor <i>`, `list`, `ps <i>`, `logs <i> <service> [--since T]`, `history <i>`, `bundles <i>` | Diagnostics; they write nothing (`status` exits 5 when attention is needed) |
+| `scheduled backup <i>`, `scheduled verify <i> <bundle>\|--latest [--restore-test]`, `scheduled task <i> <task> …`, `scheduled status` | Unattended jobs for the host scheduler: class A and B only, one line on success (`scheduled status` prints only the attention codes that changed) |
+| `selftest [--host\|--offline]` | Throwaway instances end to end; `--host` also certifies the platform build; `--offline` checks the image's fixtures without a daemon |
+
 ## Documentation
 
 | File | What it holds |
 |---|---|
-| [`README.md`](README.md) | This file: status, features, design summary, hosts, conventions and names |
+| [`README.md`](README.md) | This file: status, features, design summary, hosts, install, commands, conventions and names |
 | [`CLAUDE.md`](CLAUDE.md) | Instructions for AI development agents and contributors |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Product scope, runtime and distribution, execution model, modules, on-disk layout, security model, testing strategy, hosts, support matrix and minimum host requirements |
 | [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) | Safety floors, approval classes, the operation and instance state machines, every operation step by step (adoption included), data strategies, exit codes, scheduled jobs |
@@ -104,13 +146,13 @@ Meeting these does not make a host supported: every platform build still needs i
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Milestones M0-M5 with exit gates, sizes and triggers |
 | [`docs/adr/README.md`](docs/adr/README.md) | Index of the numbered architecture decision records (`docs/adr/NNNN-*.md`) |
 
-Install and command documentation arrive with M1; until then [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3.4 and [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) §2 describe the designed install and command set. Docs stay English; operator runbooks get Vietnamese mirrors under `docs/runbooks/vi/` (Planned M3).
+[Install](#install) and [Commands (M1)](#commands-m1) above summarise the M1 install and command set; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3.4 and [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) §2-§4 hold the details, and a generated command reference arrives in M3. Docs stay English; operator runbooks get Vietnamese mirrors under `docs/runbooks/vi/` (Planned M3).
 
 ## Conventions used in every document
 
 - **Status tags**: **Decided** (part of the design), **Planned Mx** (decided, built in milestone x), **Open OD-n** (needs an owner decision), **Unverified** (a platform fact the M0 spike or a later spike must confirm).
 - **One verdict vocabulary** for gates, CI and reports: `PASS`, `FAIL`, `BLOCKED`.
-- **Owner decisions** are cited as "owner decision OD-n". OD-1, OD-2 and OD-3 are decided; the others are open and recorded in the owner's private notes, which are not part of this repository.
+- **Owner decisions** are cited as "owner decision OD-n". OD-1, OD-2, OD-3 and OD-11 are decided; the others are open and recorded in the owner's private notes, which are not part of this repository.
 - **Generic consumers.** The design is driven by two real apps, named here only by generic aliases:
   - *the PostgreSQL consumer*: a multi-service web app (PostgreSQL, a backend and a web service) with an explicit migrate step, role grants after a restore and an invariant-check command; mirrored by the fixture `fx-pg`;
   - *the SQLite consumer*: a single-container app with SQLite in a bind-mounted data directory, an online app-native backup, an outbound mail queue and a migrate at start; mirrored by the fixture `fx-lite`;

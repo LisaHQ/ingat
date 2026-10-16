@@ -1,0 +1,28 @@
+instance = 1
+name = "lite-test"
+app = "fx-lite"
+environment = "test"
+disposable = false                            # keep the restore-tested purge gate even for a test instance
+
+[source]
+repo = "ssh://git@github.com/<owner>/<app>.git"
+key = "fx-lite"
+
+[params]
+FXLITE_PORT = "20090"
+FXLITE_SUBNET = "10.200.2.0/24"               # M2 form; in the M1 form the default network keeps Docker's own subnet
+
+[app_env]
+ALLOWED_ORIGINS = "https://lite-test.<lan-domain>"
+BASE_URL = "https://lite-test.<lan-domain>"
+MAIL_SENDER = "lite-test@<domain>"
+PROXY_ADDRESS = "10.200.2.1"                  # the subnet's gateway; `ingat doctor lite-test` compares it with the observed proxy peer
+DELIVERY_MODE = "capture"                     # owner-gated; `smtp` also needs DELIVERY_ENABLED (class D)
+
+[backups]
+keep_daily = 7                                # retention defaults pending owner decision OD-8
+keep_weekly = 4
+keep_monthly = 6
+pin_pre_change_days = 30
+max_age_hours = 26
+restore_test_max_age_days = 8

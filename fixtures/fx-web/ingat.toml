@@ -1,0 +1,39 @@
+# fx-web fixture manifest (manifest schema 1): the stateless site pattern of MANIFEST_SPEC §13, git-sourced.
+manifest = 1
+app = "fx-web"
+requires_ingat = ">=0.1,<1"
+
+[source]
+kind = "git"
+release = "commit"
+
+[compose]
+files = ["compose.yaml"]
+
+[params]
+FXWEB_IMAGE   = { required = true }                       # the instance names the image (CI and selftest: the tool image)
+FXWEB_RELEASE = { kind = "template", value = "{release}" }
+FXWEB_PORT    = { kind = "port" }
+
+[services]
+stateless = ["site"]
+
+[probes.ready]
+http = { port_param = "FXWEB_PORT", path = "/" }
+expect = { status = 200, body_contains = "fx-web" }
+timeout = "60s"
+
+[[activate]]
+services = ["site"]
+wait = ["ready"]
+
+[[smoke]]
+name = "health"
+http = { port_param = "FXWEB_PORT", path = "/health" }
+expect = { status = 200, json = { status = "ok" } }
+
+[backup]
+strategy = "none"                                         # backup, verify, restore and drill report "not applicable"
+
+[side_effects]
+kind = "none"

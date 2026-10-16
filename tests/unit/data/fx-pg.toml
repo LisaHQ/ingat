@@ -1,0 +1,399 @@
+# ingat.toml — fx-pg app manifest (Ingat manifest schema 1). Ingat reads it from the exact commit it deploys.
+manifest = 1
+app = "fx-pg"
+requires_ingat = ">=0.1,<1"
+# The app's own rule: no other instance of it on a daemon that runs production (§10).
+exclusive_environments = ["production"]
+
+[source]
+kind = "git"
+release = "tag"
+tag_pattern = '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.[1-9][0-9]*)?$'
+
+[compose]
+files = ["compose.yaml"]
+build_files = ["compose.yaml", "compose.build.yaml"]
+build_services = ["backend", "web"]
+build_env = { FXPG_RELEASE = "{release}", FXPG_COMMIT = "{commit}" }
+expect_labels = { "org.opencontainers.image.version" = "{release}", "org.opencontainers.image.revision" = "{commit}" }
+
+[params]
+FXPG_RELEASE         = { kind = "template", value = "{release}" }
+FXPG_SECRETS_DIR     = { kind = "secrets_dir" }
+FXPG_BACKUP_DIR      = { kind = "task_dir" }
+FXPG_ACCEPT_SCHEMA   = { kind = "accept_schema" }
+FXPG_HTTP_PORT       = { kind = "port" }
+FXPG_EDGE_SUBNET     = { kind = "subnet" }
+FXPG_TIMEZONE        = { required = true, pattern = '^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$' }
+POSTGRES_USER        = { default = "fx_owner", pattern = '^[a-z_][a-z0-9_]{0,62}$' }
+POSTGRES_DB          = { default = "fx", pattern = '^[a-z_][a-z0-9_]{0,62}$' }
+FXPG_BACKEND_WORKERS = { default = "2", pattern = '^[1-8]$' }
+FXPG_PROXY_ADDRESS   = { default = "", pattern = '^([0-9.]+(/[0-9]{1,2})?)?$' }
+FXPG_DB_MEMORY       = { optional = true, pattern = '^[0-9]+[mg]$' }
+FXPG_DB_CPUS         = { optional = true, pattern = '^[0-9]+(\.[0-9]+)?$' }
+FXPG_BACKEND_MEMORY  = { optional = true, pattern = '^[0-9]+[mg]$' }
+FXPG_BACKEND_CPUS    = { optional = true, pattern = '^[0-9]+(\.[0-9]+)?$' }
+FXPG_WEB_MEMORY      = { optional = true, pattern = '^[0-9]+[mg]$' }
+FXPG_WEB_CPUS        = { optional = true, pattern = '^[0-9]+(\.[0-9]+)?$' }
+FXPG_OPS_MEMORY      = { optional = true, pattern = '^[0-9]+[mg]$' }
+FXPG_OPS_CPUS        = { optional = true, pattern = '^[0-9]+(\.[0-9]+)?$' }
+
+[secrets.postgres_password]                 # the postgres image reads it only when it initialises a new data volume
+generate = "alnum32"
+mode = "0444"                               # read by uid 10001 through the bind mount
+[secrets.app_password]
+generate = "alnum32"
+mode = "0444"
+[secrets.maintenance_password]
+generate = "alnum32"
+mode = "0444"
+
+[stores.pgdata]
+kind = "volume"
+volume = "postgres_data"
+service = "db"
+ready = "db-ready"
+online_backup = true                        # one pg_dump snapshot is consistent while backend writes
+
+[services]
+data = ["db"]
+writers = ["backend"]
+stateless = ["web"]                         # keeps serving the shell while backend is stopped
+log_snapshot = ["db", "backend", "web"]
+
+[schema]
+task = "revision"
+expected = "expected_revision"
+actual = "database_revision"
+migrates_on_start = false                   # the backend never migrates; migration is the explicit `migrate` task
+
+# ---------------------------------------------------------------- probes
+[probes.db-ready]                           # TCP, not the socket: the image's temporary init server listens only on the socket
+exec = "db"
+argv = ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "{param.POSTGRES_USER}", "-d", "{param.POSTGRES_DB}"]
+stable = "15s"
+timeout = "180s"
+
+[probes.backend-ready]                      # readiness, not liveness: 200 only when the schema is current (or accepted after `rollback --accept-schema`, Planned M3)
+exec = "backend"
+argv = ["wget", "-q", "-O", "-", "-T", "3", "http://127.0.0.1:8000/api/health"]
+expect = { json = { status = "ok", release = "{release}", schema = "current" } }   # "accepted" is added only for `rollback --accept-schema` (M3, ADR)
+stable = "5s"
+timeout = "180s"
+
+[probes.web-healthy]
+health = "web"
+timeout = "60s"
+
+[probes.edge-ready]
+http = { port_param = "FXPG_HTTP_PORT", path = "/api/health" }
+expect = { status = 200, json = { status = "ok", release = "{release}" } }
+timeout = "60s"
+
+[[activate]]
+services = ["db"]
+wait = ["db-ready"]
+[[activate]]
+services = ["backend"]                      # web still serves the previous bundle; its writes get 409 from the release gate
+wait = ["backend-ready"]
+[[activate]]
+services = ["web"]
+wait = ["web-healthy", "edge-ready"]
+reopens_writes = true
+
+# ---------------------------------------------------------------- smoke (the image identity check is built in)
+[[smoke]]
+name = "shell-is-release"
+http = { port_param = "FXPG_HTTP_PORT", path = "/" }
+expect = { status = 200, header_contains = { "content-type" = "text/html" }, header_equals = { "cache-control" = "no-cache" }, body_contains = '<meta name="fx-release" content="{release}">' }
+[[smoke]]
+name = "spa-fallback"
+http = { port_param = "FXPG_HTTP_PORT", path = "/app/deep/link" }
+expect = { status = 200, header_contains = { "content-type" = "text/html" } }
+[[smoke]]
+name = "ready-on-release"
+http = { port_param = "FXPG_HTTP_PORT", path = "/api/health" }
+expect = { status = 200, json = { release = "{release}", schema = "current" } }   # "accepted" never passes the smoke
+[[smoke]]
+name = "live-on-release"
+http = { port_param = "FXPG_HTTP_PORT", path = "/api/health/live" }
+expect = { status = 200, json = { release = "{release}" } }
+[[smoke]]
+name = "unknown-api-is-json-404"
+http = { port_param = "FXPG_HTTP_PORT", path = "/api/fx-smoke-missing" }
+expect = { status = 404, header_contains = { "content-type" = "application/json" } }
+[[smoke]]
+name = "write-gate-refuses-missing-release"
+http = { port_param = "FXPG_HTTP_PORT", method = "POST", path = "/api/fx-smoke-gate", headers = { "X-Fx-CSRF" = "1", "Content-Type" = "application/json" }, body = "{}" }
+expect = { status = 409, json = { stale_release = true } }
+[[smoke]]
+name = "write-gate-passes-current-release"
+http = { port_param = "FXPG_HTTP_PORT", method = "POST", path = "/api/fx-smoke-gate", headers = { "X-Fx-CSRF" = "1", "Content-Type" = "application/json", "X-Fx-Release" = "{release}" }, body = "{}" }
+expect = { status = 404 }
+
+# ---------------------------------------------------------------- first install
+[[install]]
+start = ["db"]
+wait = ["db-ready"]
+[[install]]
+task = "db-roles"
+[[install]]
+task = "migrate-first"
+[[install]]
+start = ["backend"]
+params = { FXPG_BACKEND_WORKERS = "1" }     # first-run setup needs one worker
+wait = ["backend-ready"]
+log_snapshot = false
+[[install]]
+start = ["web"]
+wait = ["web-healthy", "edge-ready"]
+[[install]]
+pause = "First-run setup: read the one-time setup code with `ingat logs {instance} backend --since 15m` (it is in the backend log, which anyone who can run `ingat logs` can read, so finish setup now), create the first administrator at the instance URL, then run `ingat resume {instance}`."
+[[install]]
+start = ["backend"]                         # recreated with the configured worker count
+wait = ["backend-ready"]
+log_snapshot = false                        # the previous backend log holds the setup code
+[[install]]
+task = "check-setup"
+
+# ---------------------------------------------------------------- update
+[deploy]
+baseline = []                               # Planned M3 (owner decision OD-7): ["check"], findings allowed, compared after migrate
+prechecks = ["check", "check-compat-candidate"]   # the current image must be clean; the candidate's compatibility subset
+migrate = "migrate"
+postchecks = ["check-candidate"]            # the full check on the candidate after migrate must be clean; with a baseline, a comparison task replaces it
+
+# ---------------------------------------------------------------- backup (the payload is the app's own backup directory)
+[backup]
+strategy = "tasks"
+steps = ["pg-dump", "pg-list", "pg-revision", "backup-publish"]
+verify = ["backup-verify"]
+payload = "{bundle.id}"
+
+[backup.naming]                             # the app's own backup name grammar
+scheduled = "{bundle.stamp}-daily"
+manual = "{bundle.stamp}-manual"
+final = "{bundle.stamp}-manual"
+pre-change = "{bundle.stamp}-pre-release-{target.release}"
+
+# ---------------------------------------------------------------- restore (into a new generation, in an isolated project)
+[restore]
+start = ["db"]
+steps = ["pg-restore"]
+post = ["db-roles", "db-grants"]            # dumps carry no grants
+checks = ["revision", "restore-check"]
+activate = false
+
+[drill]
+checks = ["revision", "restore-check"]
+record = ["check"]
+activate = true                             # start backend and web in isolation; exec and health probes only
+min_free_memory = "2g"                      # a second PostgreSQL runs during the drill
+
+[holds.web]                                 # internal networks have no default route; without this web exits at start
+FXPG_PROXY_ADDRESS = "127.0.0.1"            # any IPv4 address works: no proxy traffic exists in isolation
+
+[side_effects]
+kind = "none"
+
+# ---------------------------------------------------------------- tasks
+[tasks.revision]                            # read-only schema probe; 0 current, 1 any other state, 2 could not run
+service = "backend"
+mode = "run"
+argv = ["fx-pg", "revision"]
+effect = "read"
+stdout = "json"
+exit = { 0 = "ok", 1 = "finding", 2 = "failed" }
+timeout = "2m"
+
+[tasks.check]                               # full report: deploy precheck (must be clean), drill record, a daily `ingat scheduled task`
+service = "backend"
+mode = "run"
+argv = ["fx-pg", "check", "--max-findings", "10000"]
+effect = "read"
+stdout = "record"                           # may hold personal data: stored 0600
+exit = { 0 = "ok", 1 = "finding", 2 = "failed" }
+timeout = "30m"
+
+[tasks.check-setup]                         # after the first install: first-run setup is complete
+service = "backend"
+mode = "run"
+argv = ["fx-pg", "check", "--only", "setup"]
+effect = "read"
+stdout = "record"
+exit = { 0 = "ok", 1 = "finding", 2 = "failed" }
+timeout = "10m"
+
+[tasks.check-compat-candidate]              # precheck with the candidate image, before the freeze
+service = "backend"
+mode = "run"
+image = "candidate"
+argv = ["fx-pg", "check", "--only", "compat"]
+effect = "read"
+stdout = "record"
+exit = { 0 = "ok", 1 = "finding", 2 = "failed" }
+timeout = "10m"
+
+[tasks.check-candidate]                     # post-migrate check: the full report with the candidate image
+service = "backend"
+mode = "run"
+image = "candidate"
+argv = ["fx-pg", "check", "--max-findings", "10000"]
+effect = "read"
+stdout = "record"
+exit = { 0 = "ok", 1 = "finding", 2 = "failed" }
+timeout = "30m"
+
+[tasks.restore-check]
+service = "backend"
+mode = "run"
+argv = ["fx-pg", "check", "--only", "setup", "--only", "compat"]
+effect = "read"
+stdout = "record"
+exit = { 0 = "ok", 1 = "finding", 2 = "failed" }
+timeout = "10m"
+
+[tasks.migrate]                             # the service's entrypoint is the app's migrate command
+service = "migrate"
+mode = "run"
+image = "candidate"
+argv = ["--pre-change-backup", "{bundle.payload}", "--not-before", "{freeze_at}", "--backup-dir", "/backups"]
+mounts = { FXPG_BACKUP_DIR = "bundle" }     # private read-only copy owned by uid 10001
+effect = "data"
+idempotent = true                           # an at-head database answers already_current
+observe = "schema"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused", 2 = "unknown" }
+operator = false
+timeout = "60m"
+
+[tasks.migrate-first]
+service = "migrate"
+mode = "run"
+image = "candidate"
+argv = ["--without-backup", "first install: empty database (ingat op {op.seq})"]
+effect = "data"
+idempotent = true
+observe = "schema"
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused", 2 = "unknown" }
+operator = false
+timeout = "30m"
+
+[tasks.db-roles]                            # the service's entrypoint is the app CLI; safe to repeat
+service = "db-roles"
+mode = "run"
+argv = ["roles"]
+effect = "data"
+idempotent = true
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused", 2 = "unknown" }
+timeout = "5m"
+
+[tasks.db-grants]
+service = "db-roles"
+mode = "run"
+argv = ["grants"]
+effect = "data"
+idempotent = true
+stdout = "record"
+exit = { 0 = "ok", 1 = "refused", 2 = "unknown" }
+timeout = "5m"
+
+[tasks.pg-dump]
+service = "db"
+mode = "exec"
+env = { TZ = "UTC" }                        # the archive stores local-time fields
+argv = ["pg_dump", "-U", "{param.POSTGRES_USER}", "-d", "{param.POSTGRES_DB}", "--format=custom", "--no-owner", "--no-privileges", "--lock-wait-timeout=60s"]
+stdout = "file:.partial/{bundle.id}/db.dump"
+nonempty = true
+effect = "read"
+exit = { 0 = "ok" }
+timeout = "60m"
+
+[tasks.pg-list]
+service = "db"
+mode = "exec"
+env = { TZ = "UTC" }
+argv = ["pg_restore", "--list"]
+stdin = "file:.partial/{bundle.id}/db.dump"
+stdout = "file:.partial/{bundle.id}/db.dump.list"
+nonempty = true
+effect = "read"
+exit = { 0 = "ok" }
+timeout = "10m"
+
+[tasks.pg-revision]
+service = "db"
+mode = "exec"
+env = { TZ = "UTC" }
+argv = ["pg_restore", "--data-only", "--table=schema_version", "--file=-"]
+stdin = "file:.partial/{bundle.id}/db.dump"
+stdout = "file:.partial/{bundle.id}/schema_version.sql"
+effect = "read"
+exit = { 0 = "ok" }
+timeout = "10m"
+
+[tasks.backup-publish]                      # publishes <stage>/{bundle.id}/ with the app's own backup manifest and SHA256SUMS
+service = "backup-tools"
+mode = "run"
+argv = ["backup-publish", "--name", "{bundle.id}", "--operator", "{operator}", "--reason", "{reason}",
+        "--release-tag", "{release}", "--release-commit", "{commit}", "--expected-revision", "{schema.expected}",
+        "--environment", "{environment}", "--host", "{host}",
+        "--image-backend", "{image.backend}", "--image-web", "{image.web}", "--image-db", "{image.db}"]
+mounts = { FXPG_BACKUP_DIR = "stage" }
+effect = "read"                             # writes only into the stage
+stdout = "json"
+exit = { 0 = "ok", 1 = "refused", 2 = "failed" }
+timeout = "10m"
+
+[tasks.backup-verify]
+service = "backup-tools"
+mode = "run"
+argv = ["verify-backup", "{bundle.payload}", "--database", "{param.POSTGRES_DB}"]
+mounts = { FXPG_BACKUP_DIR = "bundle" }
+effect = "read"
+stdout = "json"
+exit = { 0 = "ok", 1 = "failed", 2 = "failed" }
+timeout = "20m"
+
+[tasks.pg-restore]                          # exec into the isolated project's db only
+service = "db"
+mode = "exec"
+env = { TZ = "UTC" }
+argv = ["pg_restore", "--single-transaction", "--exit-on-error", "--no-owner", "--no-privileges", "-U", "{param.POSTGRES_USER}", "-d", "{param.POSTGRES_DB}"]
+stdin = "bundle:{bundle.payload}/db.dump"
+effect = "data"
+exit = { 0 = "ok" }
+operator = false
+timeout = "120m"
+
+[tasks.app-status]                          # read-only report; its backup-age field is not authoritative under Ingat
+service = "status"
+mode = "run"
+argv = []
+effect = "read"
+stdout = "json"
+exit = { 0 = "ok", 1 = "finding", 2 = "failed" }
+timeout = "2m"
+
+[tasks.reset-password]                      # recovery; the password is typed at the prompt, never an argument
+service = "backend"
+mode = "run"
+argv = ["fx-pg", "reset-password", "--user", "{arg.user}"]
+args = { user = '^[A-Za-z0-9._@-]{1,64}$' }
+stdin = "terminal"
+stdout = "terminal"
+effect = "app-write"
+exit = { 0 = "ok", 1 = "refused", 2 = "unknown" }
+timeout = "5m"
+
+[tasks.recover-admin-role]                  # recovery; a free-text name without control characters
+service = "backend"
+mode = "run"
+argv = ["fx-pg", "recover-admin-role", "--role-name", "{arg.role_name}"]
+args = { role_name = '^[^\x00-\x1f]{1,100}$' }
+stdout = "terminal"
+effect = "app-write"
+exit = { 0 = "ok", 1 = "refused", 2 = "unknown" }
+timeout = "5m"
