@@ -3,7 +3,7 @@
 #   sh install.sh --version 0.1.0 [--root /srv/ingat] [--backups /srv/ingat-backups] [--from-tar FILE] [--link PATH]
 # A platform profile passes its own roots (the DSM profile: --root /volume1/ingat --backups /volume1/ingat-backups).
 set -eu
-die() { echo "install: $*" >&2; exit "${2:-1}"; }
+die() { echo "install: $1" >&2; exit "${2:-1}"; }
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo -i)" 2
 VERSION= ROOT=/srv/ingat BACKUPS=/srv/ingat-backups TAR= LINK=
 while [ $# -gt 0 ]; do
@@ -17,6 +17,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$VERSION" ] || die "--version is required" 2
+# The version is interpolated into the wrapper's heredoc: a semantic version only (X.Y.Z plus one optional -pre or
+# +build suffix of [0-9A-Za-z.-]).
+case "$VERSION" in *[!0-9A-Za-z.+-]*) die "--version must be a semantic version such as 0.1.0" 2 ;; esac
+printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$' \
+  || die "--version must be a semantic version such as 0.1.0, not $VERSION" 2
 case "$ROOT$BACKUPS" in *[!A-Za-z0-9/._-]*) die "roots may contain only [A-Za-z0-9/._-]" 2 ;; esac
 case "$ROOT" in /*) ;; *) die "--root must be absolute" 2 ;; esac
 case "$BACKUPS" in /*) ;; *) die "--backups must be absolute" 2 ;; esac
@@ -51,7 +56,8 @@ mkdir -p "$ROOT/bin"; chmod 0700 "$ROOT/bin"
   || "$DOCKER" volume create --label io.github.lisahq.ingat.role=probe ingat-probe >/dev/null
 
 run_image() { "$DOCKER" run --rm --pull never --log-driver none "$@"; }
-run_image "$IMAGE" selftest --offline || die "selftest --offline failed with the new image"
+# With the wrapper's own flags, so an engine the wrapper cannot run on (no docker-init) fails here, not later.
+run_image --init --network host "$IMAGE" selftest --offline || die "selftest --offline failed with the new image"
 
 write_wrapper() {
   cat > "$1" <<EOF

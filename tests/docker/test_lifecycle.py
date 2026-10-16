@@ -175,7 +175,7 @@ class LifecycleTest(unittest.TestCase):
             os.dup2(tty.fileno(), 1)
             try:
                 ctx = cls.ctx()
-                out["joined"] = executor.run_in_process(cls.lay, ctx.docker, ctx.compose, join, tty=False)
+                out["joined"] = executor.run_in_process(cls.lay, ctx.docker, ctx.compose, join, tty=False).exit
             finally:
                 os.dup2(saved, 1)
                 os.close(saved)

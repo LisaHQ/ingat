@@ -123,13 +123,20 @@ class WriteTest(Base):
         with self.assertRaises(FileExistsError):
             fs.open_write(path)
 
-    def test_make_empty_dir_is_exclusive_with_exact_mode_and_owner(self) -> None:
+    def test_make_empty_dir_is_exclusive_with_exact_mode(self) -> None:
+        path = self.p("x", "placeholder")
+        fs.make_empty_dir(path, 0o555)
+        self.assertEqual(mode(path), 0o555)
+        with self.assertRaises(FileExistsError):
+            fs.make_empty_dir(path, 0o700)
+        self.assertEqual(mode(path), 0o555)
+
+    @unittest.skipUnless(os.geteuid() == 0, "needs root: chown to another owner")
+    def test_make_empty_dir_applies_the_owner(self) -> None:
         path = self.p("x", "placeholder")
         fs.make_empty_dir(path, 0o555, (1234, 2345))
         st = os.lstat(path)
         self.assertEqual((stat.S_IMODE(st.st_mode), st.st_uid, st.st_gid), (0o555, 1234, 2345))
-        with self.assertRaises(FileExistsError):
-            fs.make_empty_dir(path, 0o700)
 
     def test_rename_never_replaces(self) -> None:
         self.put("s/a/f", b"1")
@@ -243,7 +250,15 @@ class TreeTest(Base):
         self.assertEqual(mode(self.p("dst", "a")), 0o750)
         self.assertTrue(os.path.isdir(self.p("dst", "a", "empty")))
 
-    def test_copy_tree_applies_owner_and_modes(self) -> None:
+    def test_copy_tree_applies_modes(self) -> None:
+        src = self.make_tree()
+        fs.copy_tree(src, self.p("in"), dir_mode=0o750, file_mode=0o440)
+        for path in (self.p("in"), self.p("in", "a"), self.p("in", "a", "x.bin"), self.p("in", "b.txt")):
+            st = os.lstat(path)
+            self.assertEqual(stat.S_IMODE(st.st_mode), 0o750 if stat.S_ISDIR(st.st_mode) else 0o440, path)
+
+    @unittest.skipUnless(os.geteuid() == 0, "needs root: chown to another owner, directories closed to their owner")
+    def test_copy_tree_applies_owner_and_read_only_modes(self) -> None:
         src = self.make_tree()
         fs.copy_tree(src, self.p("in"), owner=(10001, 10002), dir_mode=0o550, file_mode=0o440)
         for path in (self.p("in"), self.p("in", "a"), self.p("in", "a", "x.bin"), self.p("in", "b.txt")):
@@ -287,10 +302,16 @@ class TreeTest(Base):
 
     def test_remove_tree(self) -> None:
         src = self.make_tree()
-        os.chmod(self.p("src", "a"), 0o500)
         fs.remove_tree(src)
         self.assertFalse(os.path.lexists(src))
         fs.remove_tree(src)  # absent is done
+
+    @unittest.skipUnless(os.geteuid() == 0, "needs root: a directory closed to its owner")
+    def test_remove_tree_removes_a_read_only_directory(self) -> None:
+        src = self.make_tree()
+        os.chmod(self.p("src", "a"), 0o500)
+        fs.remove_tree(src)
+        self.assertFalse(os.path.lexists(src))
 
     def test_remove_tree_refuses_a_link_before_removing_anything(self) -> None:
         src = self.make_tree()
@@ -303,22 +324,32 @@ class TreeTest(Base):
         self.assert_unsafe(fs.remove_tree, self.p("rootlink"))
         self.assertTrue(os.path.exists(target))
 
-    def test_chown_and_chmod_tree(self) -> None:
+    def test_chmod_tree(self) -> None:
         src = self.make_tree()
-        fs.chown_tree(src, 4321, 4322)
         fs.chmod_tree(src, 0o700, 0o600)
         for rel in ("", "a", "a/empty", "a/x.bin", "b.txt"):
             st = os.lstat(os.path.join(src, rel))
-            want = 0o700 if stat.S_ISDIR(st.st_mode) else 0o600
-            self.assertEqual((st.st_uid, st.st_gid, stat.S_IMODE(st.st_mode)), (4321, 4322, want), rel)
+            self.assertEqual(stat.S_IMODE(st.st_mode), 0o700 if stat.S_ISDIR(st.st_mode) else 0o600, rel)
         os.symlink("/etc/passwd", self.p("src", "l"))
         before = os.stat("/etc/passwd")
-        self.assert_unsafe(fs.chown_tree, src, 1, 1)
         self.assert_unsafe(fs.chmod_tree, src, 0o777, 0o777)
         after = os.stat("/etc/passwd")
         self.assertEqual((after.st_uid, after.st_gid, after.st_mode), (before.st_uid, before.st_gid, before.st_mode))
-        st = os.lstat(self.p("src", "a", "x.bin"))
-        self.assertEqual((st.st_uid, stat.S_IMODE(st.st_mode)), (4321, 0o600), "refused before any change")
+        self.assertEqual(mode(self.p("src", "a", "x.bin")), 0o600, "refused before any change")
+
+    @unittest.skipUnless(os.geteuid() == 0, "needs root: chown to another owner")
+    def test_chown_tree(self) -> None:
+        src = self.make_tree()
+        fs.chown_tree(src, 4321, 4322)
+        for rel in ("", "a", "a/empty", "a/x.bin", "b.txt"):
+            st = os.lstat(os.path.join(src, rel))
+            self.assertEqual((st.st_uid, st.st_gid), (4321, 4322), rel)
+        os.symlink("/etc/passwd", self.p("src", "l"))
+        before = os.stat("/etc/passwd")
+        self.assert_unsafe(fs.chown_tree, src, 1, 1)
+        after = os.stat("/etc/passwd")
+        self.assertEqual((after.st_uid, after.st_gid), (before.st_uid, before.st_gid))
+        self.assertEqual(os.lstat(self.p("src", "a", "x.bin")).st_uid, 4321, "refused before any change")
 
 
 if __name__ == "__main__":

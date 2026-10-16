@@ -133,10 +133,12 @@ def _go(ctx: Ctx, a: Args, plan: Plan | None, nothing: str) -> Report:
 
 def _foreground(ctx: Ctx, plan: Plan) -> Report:
     """A terminal task, or the resume of its operation: under the instance lock in this process (ARCHITECTURE
-    §4.3). A resume reports the result of the operation it resumed, unless its plan was stale (exit 1)."""
+    §4.3). A resume reports the result of the operation it resumed, unless its plan was stale (exit 1). An operation
+    left open (its task container still running, paused, interrupted) reports what the executor decided, the exact
+    next command included, as the detached executor's run file would."""
     approval.save(ctx.layout, plan)
-    code = executor.run_in_process(ctx.layout, ctx.docker, ctx.compose, plan, tty=ctx.tty)
-    op_dir, name = plan.inputs["op_dir"], plan.instance
+    res = executor.run_in_process(ctx.layout, ctx.docker, ctx.compose, plan, tty=ctx.tty)
+    op_dir, name, code = plan.inputs["op_dir"], plan.instance, res.exit
     own, result = os.path.join(op_dir, "plan.json"), os.path.join(op_dir, "result.json")
     resumed = plan.op_kind == "resume" and code != 1
     if fs.exists(result) and (resumed or records.doc_hash(state.read_doc(own, "plan")) == plan.hash):
@@ -146,10 +148,8 @@ def _foreground(ctx: Ctx, plan: Plan) -> Report:
     if code == 0 and plan.op_kind == "task" and plan.inputs.get("into_op") is not None:  # the paused one stays open
         line, nxt = "task completed", f"{brand.CLI} resume {name}"
         return {"exit": 0, "code": "completed", "message": line, "next": nxt, "lines": [line]}
-    why = {1: ("stale-plan", f"{name} changed since this plan was made; plan again")}
-    why[130] = ("cancelled", "cancelled before any effect")
-    key, line = why.get(code, ("task", f"task ended with exit {code}"))
-    return {"exit": code, "code": key, "message": line, "next": f"{brand.CLI} status {name}", "lines": [line]}
+    nxt = res.next or f"{brand.CLI} status {name}"
+    return {"exit": code, "code": res.code, "message": res.message, "next": nxt, "op": res.op, "lines": [res.message]}
 
 
 def _prepare(ctx: Ctx, a: Args) -> Report:
@@ -163,8 +163,12 @@ def _deploy(ctx: Ctx, a: Args) -> Report:
     except Refused as e:
         if e.code != "no-candidate":
             raise
-        if not ctx.tty:  # the deploy needs typed approval: refuse before preparing anything
-            raise CannotRun("deploy is class C: it needs a terminal to type the instance name", code="no-tty") from e
+        if not ctx.tty:  # the deploy needs typed approval: refuse before preparing anything (prepare is class B)
+            raise CannotRun(
+                "deploy is class C: it needs a terminal to type the instance name",
+                code="no-tty",
+                next=f"{brand.CLI} prepare {a.instance} {a.ref}",
+            ) from e
         render.say(a.out, [f"{e.message}: preparing {a.ref} first"])
         rep = _go(ctx, a, deploy.plan_prepare(ctx, a.instance, a.ref), f"{a.ref} is prepared")
         if rep["exit"] != 0:
@@ -360,7 +364,9 @@ def parser() -> argparse.ArgumentParser:
     sub = top.add_subparsers(dest="cmd", required=True, metavar="<command>", parser_class=_Parser)
 
     def add(name: str, text: str | None, group: Any = sub, scheduled: bool = False) -> argparse.ArgumentParser:
-        p: argparse.ArgumentParser = group.add_parser(name, parents=[common], help=text or argparse.SUPPRESS)
+        """`text` None: the subcommand is left out of the listing (argparse would print SUPPRESS there literally)."""
+        listed = {} if text is None else {"help": text}
+        p: argparse.ArgumentParser = group.add_parser(name, parents=[common], **listed)
         p.set_defaults(scheduled=scheduled)
         return p
 
@@ -387,8 +393,14 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--config", required=True)
     p.add_argument("--ref", required=True)
     add("status", "records and live state; exit 5 when attention is needed").add_argument("instance", nargs="?")
-    for name in ("doctor", "ps", "history", "bundles", "attach", "cancel", "resume", "abandon"):
-        instance(name, f"{name} (class {COMMANDS[name].klass})")
+    instance("doctor", "status plus checks of the instance, policy, gate, secrets, collisions and roots")
+    instance("ps", "the instance's containers, foreign ones in its Compose project included")
+    instance("history", "the instance's operations and their outcomes")
+    instance("bundles", "the instance's bundles with their verification level and age")
+    instance("attach", "follow the open operation again")
+    instance("cancel", "ask the open operation to stop at its next safe point (class B)")
+    instance("resume", "continue the open operation (class C)")
+    instance("abandon", "undo, tear down and close the open operation (class C)")
     add("list", "the instances of this host")
     p = instance("logs", "a service's logs")
     p.add_argument("service")
@@ -396,10 +408,13 @@ def parser() -> argparse.ArgumentParser:
     p = add("validate", "check an app repository")
     p.add_argument("repo_dir")
     p.add_argument("--instance", dest="instance_file", metavar="FILE")
-    for name in ("prepare", "deploy"):
-        instance(name, f"{name} a git ref (class {COMMANDS[name].klass})").add_argument("ref")
+    p = instance("prepare", "fetch and resolve a git ref, pull and pin the candidate's images (class B)")
+    p.add_argument("ref")
+    p = instance("deploy", "install, update or change to a git ref; prepares first when needed (class C)")
+    p.add_argument("ref")
     for name in ("start", "stop", "restart"):
-        instance(name, f"{name} services (class C)").add_argument("services", nargs="*")
+        text = f"{name} services of the recorded deployment, all or the ones named (class C)"
+        instance(name, text).add_argument("services", nargs="*")
     task(instance("task", "run a declared task (class B or C)"))
     p = instance("backup", "a bundle of the current deployment (class B)")
     p.add_argument("--class", dest="klass", default="manual")

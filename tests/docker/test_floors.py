@@ -63,7 +63,7 @@ class FloorTest(LabTest):
             fd = os.dup(1)
             os.dup2(tty.fileno(), 1)
             try:
-                code = executor.run_in_process(lab.layout, lab.docker, lab.compose, plan, tty=False)
+                code = executor.run_in_process(lab.layout, lab.docker, lab.compose, plan, tty=False).exit
             finally:
                 os.dup2(fd, 1)
                 os.close(fd)

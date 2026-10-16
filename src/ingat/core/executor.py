@@ -46,6 +46,7 @@ class Res:
     op: int | None
     next: str | None
     warnings: tuple[str, ...] = ()
+    outcome: str | None = None  # of an operation this run closed
 
 
 def execute(
@@ -71,11 +72,11 @@ def execute(
     return res.exit
 
 
-def run_in_process(layout: state.Layout, docker: Docker, compose: Compose, plan: Plan, *, tty: bool) -> int:
+def run_in_process(layout: state.Layout, docker: Docker, compose: Compose, plan: Plan, *, tty: bool) -> Res:
     """A foreground terminal task, or the resume of one: the CLI holds the lock and journals like the executor
-    (ARCHITECTURE §4.3)."""
+    (ARCHITECTURE §4.3) and prints what the executor would write to its run file (code, message, `next`)."""
     with _signals():
-        return _run(layout, docker, compose, plan, "resume" if plan.op_kind == "resume" else "new", True, tty).exit
+        return _run(layout, docker, compose, plan, "resume" if plan.op_kind == "resume" else "new", True, tty)
 
 
 @contextlib.contextmanager
@@ -145,8 +146,9 @@ def _run(layout: state.Layout, docker: Docker, compose: Compose, plan: Plan, mod
             return _abandon(old, "abandoned")
         if join and old:
             return _steps(opening.join(old, plan, env, values, fg, tty), 0)
-        if old:
-            _abandon(old, "abandoned-auto")
+        if old and _abandon(old, "abandoned-auto").outcome == "needs-review":  # its undo or teardown did not complete
+            why = f"operation {old.seq} ({old.plan.op_kind}) was abandoned but needs review before another operation"
+            raise CannotRun(why, code="needs-review", next=f"{brand.CLI} status {name}")
         return _steps(opening.open_op(layout, docker, compose, plan, host, env, values, fg, tty), 0)
 
 
@@ -277,13 +279,15 @@ def _end(op: Op, outcome: str, exit: int, code: str, message: str, frozen: bool 
 
 
 def _finish(op: Op, d: dict[str, Any]) -> Res:
-    """Unwind a decided failure or abandon, then close. An unwind that left warnings closes needs-review: an undo
-    that did not happen may have left writers stopped while the record says running."""
-    outcome, exit = d["outcome"], d["exit"]
+    """Unwind a decided failure or abandon, then close. An unwind that left warnings closes needs-review (LIFECYCLE
+    §3.5): an undo that did not happen may have left writers stopped while the record says running. A failure past
+    the forward point is frozen already, the attention state that covers it."""
+    outcome, exit, code = d["outcome"], d["exit"], d["code"]
     warnings = [] if outcome in ("completed", "needs-review") else _unwind(op, d)
-    if warnings and outcome == "failed-unchanged":
+    if warnings and outcome != "failed-frozen":
+        code = "needs-review" if code == outcome else code  # an abandon has no failure code to keep
         outcome, exit = "needs-review", 4
-    return _close(op, outcome, exit, d["code"], d["message"], warnings, d["frozen"])
+    return _close(op, outcome, exit, code, d["message"], warnings, d["frozen"])
 
 
 def _unwind(op: Op, d: dict[str, Any]) -> list[str]:
@@ -344,7 +348,7 @@ def _close(op: Op, outcome: str, exit: int, code: str, message: str, warnings: l
     )  # fmt: skip
     state.write_doc_once(op.path("result.json"), doc)
     op.journal.progress(f"operation {outcome}")
-    return Res(exit, code, message, op.seq, nxt, tuple(warnings))
+    return Res(exit, code, message, op.seq, nxt, tuple(warnings), outcome)
 
 
 def _resume(op: Op) -> Res:

@@ -8,6 +8,7 @@ seals them: payload, bundle.json, SHA256SUMS that lists it, a catalog entry and 
 
 import json
 import os
+import shutil
 import subprocess
 import time
 import unittest
@@ -35,20 +36,41 @@ class BackupPlanningTest(unittest.TestCase):
     candidate, install, plan = tp.PlanningTest.candidate, tp.PlanningTest.install, tp.PlanningTest.plan
     fx2 = tp.IMAGE  # PlanningTest.plan watches the update image its setUpClass builds; these tests build none
 
-    def deployed(self, backups: str = "") -> None:
-        """Deployment 1 of commit a recorded as running (nothing started: planning needs no container)."""
+    def deployed(self, backups: str = "", start: bool = False) -> None:
+        """Deployment 1 of commit a recorded as running; with `start`, its app runs (a backup plans the stop of the
+        writers it observes running, so a plan that stops or starts one needs the container)."""
         self.candidate(self.a, tp.IMAGE)
         plan = self.plan("deploy", self.a)
         assert plan is not None
-        self.install(plan, start=False)
+        self.install(plan, start=start)
         if backups:
             with open(self.lay.inst_toml(self.name), "a") as f:
                 f.write(f"[backups]\n{backups}\n")
 
-    def bundle(self, bid: str, days: int, klass: str = "scheduled", verified: bool = True) -> str:
-        """A sealed bundle of deployment 1 made `days` ago; returns its hash."""
+    def second_deployment(self, verify: list[str]) -> dict[str, Any]:
+        """Deployment 2 recorded as current: the same export and images as deployment 1 under another release and
+        commit, its manifest snapshot declaring `backup.verify = verify` and a `peek` task that reads the bundle."""
         lay, n = self.lay, self.name
         dep = state.read_doc(lay.deployment_json(n, 1), "deployment")
+        dep |= {"seq": 2, "release": "r2", "commit": "b" * 40, "op": 2, "origin": "update"}
+        state.write_doc_once(lay.deployment_json(n, 2), records.merged(dep))
+        snap = lay.deployment_snapshot(n, 2)
+        shutil.copytree(lay.deployment_snapshot(n, 1), snap)
+        manifest = Path(snap, brand.MANIFEST_FILE)
+        os.chmod(manifest, 0o600)
+        peek = ["[tasks.peek]", 'service = "app"', 'mode = "run"', 'argv = ["ls", "/in"]', 'user = "0:0"']
+        peek += ['mounts = { "/in" = "bundle" }', 'effect = "read"', 'timeout = "1m"']
+        text = manifest.read_text().replace("verify = []", f"verify = {json.dumps(verify)}")
+        manifest.write_text(text + "\n".join(peek) + "\n")
+        rec = state.read_doc(lay.record_json(n), "instance")
+        rec |= {"current_deployment": 2, "previous_deployment": 1}
+        state.replace_doc(lay.record_json(n), rec)
+        return dep
+
+    def bundle(self, bid: str, days: int, klass: str = "scheduled", verified: bool = True, seq: int = 1) -> str:
+        """A sealed bundle of deployment `seq` made `days` ago (negative: dated in the future); returns its hash."""
+        lay, n = self.lay, self.name
+        dep = state.read_doc(lay.deployment_json(n, seq), "deployment")
         d, created = lay.bundle_dir(n, bid), records.iso(records.utc_now() - timedelta(days=days))
         os.makedirs(f"{d}/payload/{bid}")
         Path(f"{d}/payload/{bid}/db").write_text(bid)
@@ -96,7 +118,7 @@ class BackupPlanningTest(unittest.TestCase):
         return [(s.type, s.klass) for s in plan.steps]
 
     def test_backup_online_offline_and_scheduled_retention(self) -> None:
-        self.deployed("keep_daily = 1\nkeep_weekly = 0")
+        self.deployed("keep_daily = 1\nkeep_weekly = 0", start=True)
         plan = self.planned(backup.plan_backup, "manual", "before the upgrade", False)
         capture = [("CaptureBundle", "scratch"), ("RunTask", "scratch"), ("CaptureBundle", "scratch")]
         verified = [("VerifyBundle", "scratch"), ("Record", "idempotent")]
@@ -167,6 +189,21 @@ class BackupPlanningTest(unittest.TestCase):
         self.assertEqual(report["next"], f"{brand.CLI} prune {self.name} --bundles --apply")
         plan = self.planned(backup.plan_prune, True)
         self.assertEqual((plan.op_kind, self.shape(plan)), ("prune", [("Delete", "forward")] * 2))
+
+        self.bundle("ahead", -1)  # dated after the host clock: retention refuses, the nightly backup goes on
+        plan = self.planned(backup.plan_backup, "scheduled", None, False, scheduled=True)
+        self.assertEqual((self.shape(plan), plan.fingerprint["bundles"]), (capture + verified, {}))
+        self.assertEqual([w.split(":")[0] for w in plan.inputs["warnings"]], ["retention skipped"])
+        self.assertIn("after the host clock", plan.inputs["warnings"][0])
+        for call in (
+            lambda: self.planned(backup.plan_backup, "manual", None, True),
+            lambda: self.planned(backup.plan_prune, True),
+        ):
+            with self.assertRaises(Refused) as cm:  # `--prune` and `prune --bundles --apply` keep refusing
+                call()
+            self.assertEqual(cm.exception.code, "clock")
+        os.remove(self.lay.catalog(self.name, "ahead"))  # the owner's fix: the clock, or that bundle, goes
+        shutil.rmtree(self.lay.bundle_dir(self.name, "ahead"))
 
         os.remove(f"{self.lay.certifications_dir}/x-selftest.json")  # a platform update: gate tier 2 refuses
         plan = self.planned(backup.plan_backup, "scheduled", None, False, scheduled=True)  # the backup goes on
@@ -280,7 +317,7 @@ class BackupPlanningTest(unittest.TestCase):
     def test_offline_backup_refuses_foreign_objects_of_the_project(self) -> None:
         """Writers stop and start again: Compose would stop and start a container of the writer service that is not
         the instance's own (F8). An online backup runs no Compose stop or start."""
-        self.deployed()
+        self.deployed(start=True)
         ghost = f"{self.name}-hand"
         labels = [f"--label=com.docker.compose.project={self.name}", "--label=com.docker.compose.service=app"]
         tp.docker("run", "-d", "--name", ghost, *labels, "--entrypoint", "sleep", tp.IMAGE, "600")
@@ -294,10 +331,75 @@ class BackupPlanningTest(unittest.TestCase):
         )
         self.assertEqual(json.loads(tp.docker("inspect", ghost))[0]["State"]["Status"], "running")
 
+    def test_backup_stops_the_writers_it_observes_running(self) -> None:
+        """The Stop and the bundle's consistency follow the writer containers, never the record alone: a writer that
+        runs while the record says stopped, or has no container while it says running, is `changed-outside`; one
+        stopped under a running record (as `stop <i> app` leaves it) is neither stopped nor started again, and the
+        bundle is `writers-stopped` as the capture will find it (LIFECYCLE §4.7, §5.3)."""
+        self.deployed(start=True)
+        lay, n = self.lay, self.name
+        [app] = [c for c in self.ctx.docker.containers(project=n)]
+        rec = state.read_doc(lay.record_json(n), "instance")
+        state.replace_doc(lay.record_json(n), rec | {"state": "stopped"})  # the record says stopped; the app runs
+        for klass in ("pre-change", "manual"):
+            with self.assertRaises(Refused) as cm:
+                self.planned(backup.plan_backup, klass, None, False)
+            self.assertEqual((cm.exception.code, cm.exception.next), ("changed-outside", f"{brand.CLI} stop {n}"))
+        state.replace_doc(lay.record_json(n), rec)
+        tp.docker("stop", "-t", "5", app["Id"])  # stopped while the record says running: as `stop <i> app` leaves it
+        capture = [("CaptureBundle", "scratch"), ("RunTask", "scratch"), ("CaptureBundle", "scratch")]
+        verified = [("VerifyBundle", "scratch"), ("Record", "idempotent")]
+        for klass in ("pre-change", "manual"):
+            plan = self.planned(backup.plan_backup, klass, None, False)
+            self.assertEqual(self.shape(plan), capture + verified)  # nothing to stop, nothing started again
+            self.assertEqual(plan.steps[2].args["consistency"], "writers-stopped")
+        tp.docker("rm", app["Id"])  # no container at all while the record says running
+        with self.assertRaises(Refused) as cm:
+            self.planned(backup.plan_backup, "manual", None, False)
+        self.assertEqual((cm.exception.code, cm.exception.next), ("changed-outside", f"{brand.CLI} restart {n}"))
+
+    def test_verify_runs_the_tasks_of_the_bundles_own_release(self) -> None:
+        """A bundle is verified by the `backup.verify` tasks of the release that made it, on that release's images
+        and files (LIFECYCLE §4.8), never by the current deployment's: an older bundle whose release verified by hash
+        only stays hash-only after an update that adds a verify task, and a newer one runs the task on its release."""
+        self.deployed()
+        self.bundle("b1", 2)
+        dep2 = self.second_deployment(["peek"])
+        self.bundle("b2", 1, seq=2)
+        plan = self.planned(backup.plan_verify, "b1", False, False)
+        self.assertEqual(
+            (self.shape(plan), plan.inputs["variants"]), ([("VerifyBundle", "scratch"), ("Record", "idempotent")], {})
+        )
+        plan = self.planned(backup.plan_verify, "b2", False, False)
+        self.assertEqual(
+            self.shape(plan), [("VerifyBundle", "scratch"), ("RunTask", "scratch"), ("Record", "idempotent")]
+        )
+        check, peek, record = plan.steps
+        self.assertEqual(
+            (check.args, peek.args["task"], peek.args["variant"]),
+            ({"bundle": "b2", "input_owner": [0, 0]}, "peek", "release"),
+        )
+        self.assertEqual(
+            (record.args["bundle_from"], record.args["steps_ok"], record.args["level"]), (1, [2], "verified")
+        )
+        v = plan.inputs["variants"]["release"]
+        self.assertEqual(
+            (v["project"], v["isolated"], v["images"], v["directory"]),
+            (self.name, False, dep2["images"], dep2["export"]),
+        )
+        self.assertEqual(
+            (v["values"]["release"], v["values"]["commit"], v["values"]["target.release"]), ("r2", "b" * 40, "r2")
+        )
+        self.assertEqual(plan.command[-2:], [self.name, "b2"])
+        payload = Path(self.lay.bundle_dir(self.name, "b2"), "payload", "b2", "db")
+        payload.write_text("tampered")  # no longer the sealed bundle: VerifyBundle still runs, to record it (F10)
+        plan = self.planned(backup.plan_verify, "b2", False, False)
+        self.assertEqual((plan.steps[0].type, plan.steps[0].args["bundle"]), ("VerifyBundle", "b2"))
+
     def test_drill_isolation_policy_secrets_dir_and_warnings(self) -> None:
         """The drill's model is checked as an isolated one (F13); its throwaway secrets directory exists for a
         secrets_dir param even when no [secrets.*] makes it (LIFECYCLE §4.9); every plan carries its warnings."""
-        self.deployed()
+        self.deployed(start=True)
         self.bundle("b1", 1)
         drill = self.planned(backup.plan_verify, "b1", False, True)
         self.assertEqual((drill.inputs["warnings"], drill.inputs["variants"]["drill"]["secret_files"]), ([], []))

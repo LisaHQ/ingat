@@ -15,6 +15,7 @@ from unittest import mock
 
 from ingat import __version__, brand
 from ingat.cli import commands, follow, render
+from ingat.core.executor import Res
 from ingat.core.journal import PROGRESS
 from ingat.core.plan import Plan, new_plan
 from ingat.model import records
@@ -24,6 +25,8 @@ from ingat.ops import deploy
 from ingat.store import state
 
 NAME = "lite-test"
+DONE = Res(0, "completed", "completed", 1, None)  # what the in-process executor answers
+STALE = Res(1, "stale-plan", f"{NAME} changed since this plan was made; plan again", None, None)
 
 
 def ctrl_c() -> None:
@@ -149,12 +152,30 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(lines[2], "  2. RunTask task=migrate effect=data  [forward, forward point]")
         self.assertEqual(lines[-1], "warning: Engine 30.0 is not tested")
 
+    def test_plan_summary_of_a_resume_or_abandon_names_the_open_operation(self) -> None:
+        inputs = {"seq": 3, "op_dir": "/r/i/ops/3-deploy", "into_op": 3, "warnings": ["w"]}
+        for kind, what in (("resume", "resumes"), ("abandon", "abandons")):
+            p = new_plan(kind, NAME, "C", [brand.CLI, kind, NAME], {}, inputs, [])
+            lines = render.plan_summary(p)
+            self.assertEqual(lines, [f"{kind} {NAME}: approval class C, {what} open operation 3", "warning: w"])
+            self.assertNotIn("0 step", "\n".join(lines))
+
     def test_report_and_error(self) -> None:
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = render.report({"exit": 3, "code": "failed", "next": "x status y", "lines": ["it failed"]}, False)
         self.assertEqual((code, out.getvalue()), (3, ""))
         self.assertEqual(err.getvalue(), f"{brand.CLI}: it failed\nnext: x status y\n")
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rep = {"exit": 4, "code": "paused", "next": f"x resume {NAME}", "lines": ["paused: run the bootstrap"]}
+            code = render.report(rep, False)
+        want = f"paused: run the bootstrap\nnext: x resume {NAME}\n"  # exit 4 kept; stdout, no `<cli>:` prefix
+        self.assertEqual((code, out.getvalue(), err.getvalue()), (4, want, ""))
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = render.report({"exit": 4, "code": "detached", "next": "x attach y", "lines": ["detached"]}, False)
+        self.assertEqual((code, out.getvalue(), err.getvalue()), (4, "", f"{brand.CLI}: detached\nnext: x attach y\n"))
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             code = render.error(Refused("no such thing", code="unknown-instance", next="x list"), True)
@@ -178,6 +199,19 @@ class MainTest(Base):
             (code, doc["version"], doc["wrapper"], doc["image"]), (0, __version__, "1.2.3", env[brand.env("IMAGE")])
         )
         self.assertEqual((doc["code"], doc["next"]), ("ok", None))
+
+    def test_help_lists_every_command_but_the_executor_entry(self) -> None:
+        code, out, err = self.main("--help")
+        self.assertEqual((code, err), (0, ""))
+        for key in commands.COMMANDS:
+            self.assertRegex(out, rf"(?m)^\s+{key.split()[0]}\s+\S", key)  # listed, with a description after it
+        self.assertNotIn("_exec", out)
+        self.assertNotIn("SUPPRESS", out)
+        self.assertNotRegex(out, r"(?m)^\s+(\w+)\s+\1 \(class", "a lazy description")
+        for words in (("host", "--help"), ("scheduled", "--help"), ("deploy", "--help")):
+            code, out, _ = self.main(*words)
+            self.assertEqual(code, 0, words)
+            self.assertNotIn("SUPPRESS", out)
 
     def test_usage_error_output(self) -> None:
         code, out, err = self.main("deploy", NAME)
@@ -206,8 +240,12 @@ class MainTest(Base):
             mock.patch.object(deploy, "plan_prepare") as prepare,
         ):
             code, _, err = self.main("deploy", NAME, "r1")
+            self.assertEqual((code, prepare.called), (2, False))
+            self.assertIn(f"{brand.CLI}: deploy is class C", err)
+            self.assertIn(f"next: {brand.CLI} prepare {NAME} r1\n", err)  # prepare is class B: no terminal needed
+            code, out, _ = self.main("deploy", NAME, "r1", "--json")
         self.assertEqual((code, prepare.called), (2, False))
-        self.assertIn(f"{brand.CLI}: deploy is class C", err)
+        self.assertEqual(json.loads(out)["next"], f"{brand.CLI} prepare {NAME} r1")
 
     def test_typed_approval(self) -> None:
         self.tty = True
@@ -320,7 +358,7 @@ class MainTest(Base):
         p = plan(self.layout, "task", "B", foreground=True)
         with (
             mock.patch.object(lifecycle, "plan_task", return_value=p),
-            mock.patch.object(commands.executor, "run_in_process", return_value=0) as run,
+            mock.patch.object(commands.executor, "run_in_process", return_value=DONE) as run,
             mock.patch.object(follow, "launch_and_follow") as launch,
         ):
             code, _, _ = self.main("task", NAME, "bootstrap-new-code")
@@ -332,10 +370,40 @@ class MainTest(Base):
         p = plan(self.layout, "task", "B", foreground=True, into_op=1)
         with (
             mock.patch.object(lifecycle, "plan_task", return_value=p),
-            mock.patch.object(commands.executor, "run_in_process", return_value=0),
+            mock.patch.object(commands.executor, "run_in_process", return_value=DONE),
         ):
             code, out, _ = self.main("task", NAME, "bootstrap-new-code", "--json")
         self.assertEqual((code, json.loads(out)["next"]), (0, f"{brand.CLI} resume {NAME}"))
+
+    def test_terminal_task_left_open_prints_the_executors_next_command(self) -> None:
+        """A terminal task whose container could not be proved stopped, or whose operation paused or was interrupted,
+        leaves no result.json: the CLI prints what the executor decided (its code, message and the exact next
+        command), as the run file of the detached executor would (LIFECYCLE §3.5, F15)."""
+        from ingat.ops import lifecycle
+
+        p = plan(self.layout, "task", "B", foreground=True)
+        stop = f"docker stop {NAME}-x1-1-a1"
+        cases = [
+            (Res(4, "task-running", "task container still runs; stop it first", 1, stop), stop),
+            (Res(4, "paused", "waiting for the owner", 1, f"{brand.CLI} resume {NAME}"), f"{brand.CLI} resume {NAME}"),
+            (Res(4, "interrupted", "step 1 RunTask ended unknown", 1, None), f"{brand.CLI} status {NAME}"),
+        ]
+        for res, nxt in cases:
+            with (
+                self.subTest(code=res.code),
+                mock.patch.object(lifecycle, "plan_task", return_value=p),
+                mock.patch.object(commands.executor, "run_in_process", return_value=res),
+            ):
+                code, out, _ = self.main("task", NAME, "bootstrap-new-code", "--json")
+            doc = json.loads(out)
+            got = (code, doc["code"], doc["message"], doc["next"], doc["op"])
+            self.assertEqual(got, (4, res.code, res.message, nxt, 1))
+            with (
+                mock.patch.object(lifecycle, "plan_task", return_value=p),
+                mock.patch.object(commands.executor, "run_in_process", return_value=res),
+            ):
+                code, out, err = self.main("task", NAME, "bootstrap-new-code")  # stdout holds the plan summary
+            self.assertEqual((code, (res.message in out + err), f"next: {nxt}\n" in out + err), (4, True, True))
 
     def test_stale_terminal_task_never_reports_another_operation(self) -> None:
         from ingat.ops import lifecycle
@@ -349,7 +417,7 @@ class MainTest(Base):
         self.tty = True
         with (
             mock.patch.object(lifecycle, "plan_task", return_value=p),
-            mock.patch.object(commands.executor, "run_in_process", return_value=1),
+            mock.patch.object(commands.executor, "run_in_process", return_value=STALE),
         ):
             code, out, _ = self.main("task", NAME, "reset", "--json", typed=f"{NAME}\n")
         self.assertEqual((code, json.loads(out)["code"]), (1, "stale-plan"))
@@ -357,7 +425,7 @@ class MainTest(Base):
         state.write_doc_once(f"{d}/plan.json", p.doc())
         with (
             mock.patch.object(lifecycle, "plan_task", return_value=p),
-            mock.patch.object(commands.executor, "run_in_process", return_value=0),
+            mock.patch.object(commands.executor, "run_in_process", return_value=DONE),
         ):
             code, out, _ = self.main("task", NAME, "reset", "--json", typed=f"{NAME}\n")
         self.assertEqual((code, json.loads(out)["code"], json.loads(out)["next"]), (0, "completed", "n"))

@@ -1,8 +1,9 @@
 """Output (LIFECYCLE §4.15, §6): human lines, or one JSON object on stdout carrying `code`, `exit` and `next`.
 
 A Report is a plain dict `{"exit", "code", "next", "lines", ...data}`; `--json` prints it without `lines`. Errors print
-as `<cli>: message` plus `next: <command>` on stderr. Plans and records never hold secret values, so a plan summary
-shows step arguments as they are."""
+as `<cli>: message` plus `next: <command>` on stderr; an install pause (exit 4, code `paused`) is the outcome its plan
+announced, not an error: plain lines on stdout. Plans and records never hold secret values, so a plan summary shows
+step arguments as they are."""
 
 import json
 import sys
@@ -26,6 +27,7 @@ SHOWN = {  # the step arguments a plan summary names, per step type
     "Record": ("kind", "level"),
     "Pause": ("allow_tasks",),
 }
+REENTER = {"resume": "resumes", "abandon": "abandons"}  # plans with no steps of their own: the open operation's
 
 
 def _text(v: Any) -> str:
@@ -46,11 +48,15 @@ def step_line(s: Step) -> str:
 
 
 def plan_summary(plan: Plan) -> list[str]:
-    """Op kind, target, approval class, each step `n. Type key=args [class]`, warnings."""
+    """Op kind, target, approval class, each step `n. Type key=args [class]` (a resume or abandon names the open
+    operation it re-enters instead), warnings."""
     target = plan.instance or "host"
     release = plan.inputs.get("release")
     head = f"{plan.op_kind} {target}" + (f" at {release}" if release else "")
-    lines = [f"{head}: approval class {plan.approval}, {len(plan.steps)} step(s)"]
+    what = f"{len(plan.steps)} step(s)"
+    if plan.op_kind in REENTER and not plan.steps:
+        what = f"{REENTER[plan.op_kind]} open operation {plan.inputs.get('seq')}"
+    lines = [f"{head}: approval class {plan.approval}, {what}"]
     lines += [step_line(s) for s in plan.steps]
     return lines + [f"warning: {w}" for w in plan.inputs.get("warnings") or ()]
 
@@ -75,7 +81,7 @@ def report(rep: Report, as_json: bool) -> int:
         doc.setdefault("code", "ok" if code == 0 else "error")
         print(json.dumps(doc, sort_keys=True, indent=2), flush=True)
         return code
-    ok = code in (0, 5)
+    ok = code in (0, 5) or rep.get("code") == "paused"  # a pause is the planned outcome, not an error
     stream = sys.stdout if ok else sys.stderr
     for line in rep.get("lines") or ():
         print(line if ok else f"{brand.CLI}: {line}", file=stream)

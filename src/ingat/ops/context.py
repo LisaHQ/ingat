@@ -470,10 +470,16 @@ def model(ctx: Ctx, v: Mapping[str, Any]) -> Any:
 
 
 def current(ctx: Ctx, ld: Loaded) -> tuple[dict[str, Any], dict[str, Any]]:
-    """The variant of the recorded deployment, replaying its recorded override and Compose env (F4)."""
+    """The variant of the current deployment (F4)."""
     dep, m = ld.deployment, ld.manifest
     if dep is None or m is None:
         raise Refused(f"{ld.name} has no deployment", code="wrong-state")
+    return deployed(ctx, ld, m, dep)
+
+
+def deployed(ctx: Ctx, ld: Loaded, m: Manifest, dep: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The variant of recorded deployment `dep` under the manifest `m` it ran (its snapshot), replaying its recorded
+    override and Compose env (F4): the current deployment, or an earlier one a bundle records (LIFECYCLE §4.8)."""
     text = fs.read(os.path.join(ctx.layout.deployment_snapshot(ld.name, dep["seq"]), "override.yaml")).decode()
     kw = {"release": dep["release"], "commit": dep["commit"], "images": dep["images"], "env": dep["params"]}
     return variant(ctx, ld, m, export=dep["export"], override_text=text, **kw)

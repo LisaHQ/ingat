@@ -26,8 +26,9 @@ class FakeDocker:
 
 
 def container(name: str, cid: str, labels: dict[str, str], status: str = "running") -> dict[str, Any]:
+    state = {"Status": status, "Running": status in ("running", "restarting", "paused")}  # as the daemon reports it
     return {"Name": "/" + name, "Id": cid, "Image": "sha256:" + "a" * 64, "Config": {"Labels": labels},
-            "State": {"Status": status}}  # fmt: skip
+            "State": state}  # fmt: skip
 
 
 STEPS = [{"type": "Obtain", "klass": "scratch", "args": {"images": []}}, {"type": "Record", "klass": "idempotent"}]
@@ -78,8 +79,21 @@ class PlanTest(unittest.TestCase):
         )
         self.assertEqual(fp["next_seq"], 8)  # above every operation directory
         self.assertEqual([c[0] for c in fp["containers"]], ["site-app-1", "site-web-1"])
-        self.assertEqual(fp["containers"][1][3:], ["h1", "running"])
+        self.assertEqual((fp["containers"][1][3:], fp["containers"][0][4]), (["h1", True], False))
         self.assertEqual(fp["bundles"], {"b1": "f" * 64, "gone": None})
+
+    def test_fingerprint_folds_a_containers_state_to_whether_it_runs(self) -> None:
+        """A service in a restart loop is `restarting` and `running` by turns (F3 binds IDs and config hashes, not
+        that moment): the executor's re-observation equals the plan's; a container stopped by hand still differs."""
+        ns = {brand.label("instance"): "site", PROJECT_LABEL: "site", CONFIG_HASH_LABEL: "h1"}
+
+        def observe(status: str) -> Any:
+            return fingerprint(self.layout, FakeDocker([container("site-app-1", "c" * 64, ns, status)]), "site")  # type: ignore[arg-type]
+
+        self.assertEqual(observe("restarting"), observe("running"))
+        self.assertEqual(observe("paused"), observe("running"))
+        self.assertNotEqual(observe("exited"), observe("running"))
+        self.assertEqual(observe("running")["containers"][0][4], True)
 
     def test_load_checks_presence_hash_and_age(self) -> None:
         plan = self.plan()

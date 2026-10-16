@@ -15,6 +15,7 @@ import select
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -51,6 +52,33 @@ def tree(path: str) -> dict[str, tuple[int, bytes]]:
             p = os.path.join(top, name)
             out[os.path.relpath(p, path)] = (os.lstat(p).st_mode, Path(p).read_bytes() if name in files else b"")
     return out
+
+
+@unittest.skipUnless(os.geteuid() == 0, "install.sh runs as root")
+class InstallScriptTest(unittest.TestCase):
+    """install.sh takes only a semantic version (X.Y.Z plus one optional -pre or +build suffix): the value is
+    interpolated into the wrapper it writes, so anything else is refused before the script reads or runs anything
+    (exit 2)."""
+
+    def setUp(self) -> None:
+        self.release = tempfile.mkdtemp()  # no SHA256SUMS: an accepted version stops there, after the check
+        self.addCleanup(shutil.rmtree, self.release, True)
+        shutil.copy(REPO / "install.sh", self.release)
+
+    def install(self, *args: str) -> tuple[int, str]:
+        p = subprocess.run(["sh", f"{self.release}/install.sh", *args], capture_output=True, env=ENV, check=False)
+        return p.returncode, p.stderr.decode()
+
+    def test_version_must_be_semantic(self) -> None:
+        bad = ("1.0", "v1.0.0", "1.0.0'; rm -rf /", "1.0.0 x", "1.0.0-", "1.0.0-rc.1+build.5", "1.0.0\n2", "1..0")
+        for version in bad:
+            code, err = self.install("--version", version)
+            self.assertEqual(code, 2, (version, err))
+            self.assertIn("--version", err)
+            self.assertNotIn("SHA256SUMS", err)
+        for version in ("0.1.0", "1.2.3-rc.1", "1.2.3+build.5", "10.20.30-a-b.c"):
+            code, err = self.install("--version", version)  # accepted: the script goes on to the missing SHA256SUMS
+            self.assertEqual((code, "SHA256SUMS not found" in err), (1, True), (version, err))
 
 
 @unittest.skipUnless(os.path.exists(SOCK), "needs a scratch Docker daemon")

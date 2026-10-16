@@ -86,15 +86,16 @@ def new_plan(
 
 
 def fingerprint(layout: state.Layout, docker: Docker, instance: str, bundles: Iterable[str] = ()) -> dict[str, Any]:
-    """What a plan was computed against; the executor recomputes it and refuses a mismatch (F3)."""
+    """What a plan was computed against; the executor recomputes it and refuses a mismatch (F3). Of a container's
+    state only whether it runs counts: a container in a restart loop is `running` and `restarting` by turns, and
+    Docker keeps it running throughout, while one stopped by hand stops running."""
     rec = state.read_doc(layout.record_json(instance), "instance")
     containers = []
     for c in docker.containers(labels={brand.label("instance"): instance}):
         labels = c["Config"].get("Labels") or {}
         if PROJECT_LABEL in labels:
-            containers.append(
-                [c["Name"].lstrip("/"), c["Id"], c["Image"], labels.get(CONFIG_HASH_LABEL, ""), c["State"]["Status"]]
-            )
+            running = bool(c["State"].get("Running"))
+            containers.append([c["Name"].lstrip("/"), c["Id"], c["Image"], labels.get(CONFIG_HASH_LABEL, ""), running])
     paths = {b: layout.catalog(instance, b) for b in bundles}
     catalog = {b: state.read_doc(p, "catalog")["bundle_hash"] if fs.exists(p) else None for b, p in paths.items()}
     return {

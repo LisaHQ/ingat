@@ -353,6 +353,48 @@ class CoreTest(LabTest):
         self.assertTrue(os.path.exists(lab.layout.catalog(lab.name, f"{bid}.pruned")))
         self.assertEqual(lab.docker.inspect("container", [name]), [])
 
+    def test_an_abandon_whose_undo_fails_needs_review_and_refuses_the_next_operation(self) -> None:
+        """LIFECYCLE §3.4, §3.5: an abandon, or the auto-abandon the next command makes, whose undo did not complete
+        (here: the writers' start is refused) closes `needs-review` (exit 4), never a clean `abandoned`, and the
+        command that auto-abandoned it is refused (`needs-review`, exit 2) instead of running on with the writers
+        stopped while the record says running."""
+        lab = self.lab
+        empty = Path(lab.base, "empty-secret")  # fault injection: the undo's Compose call refuses an empty secret
+        empty.write_text("")
+        bad = lab.variant() | {"secret_files": [str(empty)]}
+        stop = step("Stop", "reversible", args={"variant": "current", "services": ["app"], "freeze": True})
+        check = task("check", "current", ["true"], effect="read", exit={"0": "ok"})
+        seq = lab.seq()
+        self.assertEqual(
+            lab.crash(
+                lab.save("backup", [stop, step("RunTask", "scratch", args=check)], {"current": bad}), "2:intent:after"
+            ),
+            -signal.SIGKILL,
+        )
+        code, run = lab.run(lab.backup_plan())  # finds the open backup, auto-abandons it: the undo of the Stop fails
+        self.assertEqual((code, run["code"], run["next"]), (2, "needs-review", f"{brand.CLI} status {lab.name}"), run)
+        result = lab.result(seq, "backup")
+        self.assertEqual((result["outcome"], result["exit"], result["code"]), ("needs-review", 4, "needs-review"))
+        self.assertTrue([w for w in result["warnings"] if w.startswith("undo step 1")], result["warnings"])
+        self.assertEqual((lab.open_op(), os.path.exists(lab.op_dir(seq + 1, "backup"))), (None, False))
+        [c] = lab.docker.containers(project=lab.name)
+        self.assertFalse(c["State"]["Running"])  # as the warning says; the record still says running
+        self.assertEqual(state.read_doc(lab.layout.record_json(lab.name), "instance")["state"], "running")
+        seq = lab.seq()
+        self.assertEqual(
+            lab.crash(
+                lab.save("backup", [stop, step("RunTask", "scratch", args=check)], {"current": bad}), "2:intent:after"
+            ),
+            -signal.SIGKILL,
+        )
+        code, run = lab.run(lab.resume_plan("abandon"), "abandon")  # `abandon` closes the same way
+        self.assertEqual((code, run["code"]), (4, "needs-review"), run)
+        self.assertEqual(lab.result(seq, "backup")["outcome"], "needs-review")
+        up = step("Up", "reversible", args={"variant": "current", "services": ["app"], "wait": ["ready"]})
+        code, run = lab.run(lab.save("start", [up], {"current": lab.variant()}))  # the review: start the app again
+        self.assertEqual((code, run["code"]), (0, "completed"), run)
+        self.assertTrue(eventually(self.healthy))
+
     def test_abandon_discards_partial_outputs(self) -> None:
         lab = self.lab
         seq = lab.seq()

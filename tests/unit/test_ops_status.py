@@ -120,7 +120,10 @@ class StatusTest(unittest.TestCase):
         self.register(NAME)
         self.docker = FakeDocker()
         self.ctx = cx.Ctx(lay, self.docker, None, "", "root", "h", now=NOW)  # type: ignore[arg-type]
-        for p in (mock.patch.object(cx, "gate", return_value=[]), mock.patch.object(st, "Compose", FakeCompose)):
+        patches = [mock.patch.object(cx, "gate", return_value=[]), mock.patch.object(st, "Compose", FakeCompose)]
+        if os.geteuid() != 0:  # the roots check wants root-owned roots; test_ops_host covers it, as root
+            patches.append(mock.patch.object(st, "roots", return_value=[]))
+        for p in patches:
             p.start()
             self.addCleanup(p.stop)
 

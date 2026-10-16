@@ -15,7 +15,7 @@ from ingat.model.manifest import Manifest, parse_manifest
 from ingat.ops import context as cx
 from ingat.ops import steps_build as sb
 from ingat.ops.context import Ctx, Loaded
-from ingat.ops.deploy import STOP_TIMEOUT, Step, _step, _up, foreign, pinned, way_forward
+from ingat.ops.deploy import STOP_TIMEOUT, Step, _containers, _step, _up, foreign, pinned, way_forward
 from ingat.ops.steps_build import levels as levels
 from ingat.policy import retention
 from ingat.policy.gate import TIER1, TIER2
@@ -29,42 +29,43 @@ Report = dict[str, Any]
 
 
 def plan_backup(ctx: Ctx, name: str, klass: str, reason: str | None, prune: bool, *, scheduled: bool = False) -> Plan:
-    """A bundle of the recorded deployment, sealed and verified. Writers stop unless every store backs up online and
-    the class allows it; retention follows when `prune` or `scheduled` (LIFECYCLE §4.7)."""
+    """A bundle of the recorded deployment, sealed and verified. The writers that run stop unless every store backs
+    up online and the class allows it; retention follows when `prune` or `scheduled` (LIFECYCLE §4.7)."""
     klass = "scheduled" if scheduled else klass
     if klass not in CLASSES or set(reason or "") & set("\0\n\r"):
         raise CannotRun(f"the class must be one of {', '.join(CLASSES)}; --reason one line", code="usage")
     ld = _load(ctx, name)
-    m, _ = _deployed(ld)
+    m, dep = _deployed(ld)
     if ld.record.get("state") == "frozen":  # the recorded release's tasks would capture, and restart, other data
         msg = f"{name} is frozen: its data may be past the forward point of the update that froze it"
         raise Refused(msg, code="frozen", next=way_forward(ctx.layout, name) or f"{brand.CLI} status {name}")
-    running = ld.record.get("state") == "running"
     online = klass in ("scheduled", "manual") and all(s.online_backup for s in m.stores.values())
     warnings = cx.gate(ctx, TIER1 if online else TIER2, name)
     seq, layout = state.next_seq(ctx.layout, name), ctx.layout
-    v, model = _current(ctx, ld, seq, reason or (f"scheduled {klass} backup" if scheduled else ""))
+    v, model = _variant(ctx, ld, m, dep, seq, reason or (f"scheduled {klass} backup" if scheduled else ""))
     _naming(ctx, name, m, v["values"], klass)
-    writers = list(m.services.writers) if running and not online else []
+    live = _writers(ctx, ld, m)
+    writers = [] if online else live
     if writers:  # Compose stops and starts every container of a writer service in the project (F8)
         foreign(ctx, name)
     stop = {"variant": "current", "services": writers, "freeze": True, "timeout": STOP_TIMEOUT}
     steps = [_step("Stop", "reversible", **stop)] if writers else []
-    how = "online-app" if online and running else "writers-stopped"
+    how = "online-app" if online and live else "writers-stopped"  # what holds once the capture runs (§5.3)
     sb.capture_steps(ctx, ld, v, model, steps, "current", klass, how)
     for g in m.activate:  # writers start again in activation order, each group waiting for its probes
         if up := [s for s in g.services if s in writers]:
             steps.append(_up(m, "current", up, g.wait, klass="reversible"))
     cat: dict[str, Any] = {}
     if prune or scheduled:  # `prune --bundles`, gate tier 2 (ARCHITECTURE §3.6), even after an online backup
-        try:
+        try:  # over the bundles catalogued now; the new one is the newest, kept by the next run
             cx.gate(ctx, TIER2)
-        except CannotRun as e:  # the nightly backup goes on and keeps every bundle until the build is certified
-            if not scheduled:
+            _, delete, cat = _retention(ctx, ld)
+        except (CannotRun, Refused) as e:  # the nightly backup goes on and keeps every bundle: until the build is
+            if not scheduled or (isinstance(e, Refused) and e.code != "clock"):  # certified, or the clock passes
                 raise
             warnings.append(f"retention skipped: {e.message}")
-        else:  # over the bundles catalogued now; the new one is the newest, kept by the next run
-            _, delete, cat = _retention(ctx, ld)
+            cat = {}
+        else:
             steps += _deletes(cat, delete)
     size = cx.payload_size(ctx, ld)
     cx.capacity(ctx, {layout.root: size, layout.backups: size})
@@ -85,12 +86,20 @@ def plan_verify(
     command = [brand.CLI, *(["scheduled"] if scheduled else []), "verify", name, bid]
     if restore_test:
         return _drill(ctx, ld, bid, entry, [*command, "--restore-test"])
-    m, _ = _deployed(ld)
+    try:  # the verify tasks of the bundle's own release, on its images
+        m, dep = _recorded(ctx, ld, bid, entry)
+    except Refused as e:  # no longer the sealed bundle: VerifyBundle fails on it and records the mismatch (F10)
+        if e.code != "bundle-hash":
+            raise
+        m, dep = _deployed(ld)
     warnings = cx.gate(ctx, TIER1 if all(s.online_backup for s in m.stores.values()) else TIER2, name)
     seq, variants, steps = state.next_seq(ctx.layout, name), dict[str, Any](), list[Step]()
-    v, model = _current(ctx, ld, seq) if m.backup.verify else (None, None)  # hash only: no Compose project
-    variants |= {"current": v} if v else {}
-    sb.verify_steps(ctx, m, v, model, steps, "current", bid)
+    v, model = None, None  # hash only: no Compose project
+    if m.backup.verify:
+        _images(ctx, dep)
+        v, model = _variant(ctx, ld, m, dep, seq)
+        variants["release"] = v
+    sb.verify_steps(ctx, m, v, model, steps, "release", bid)
     copy = steps[0]["args"]["input_owner"] is not None
     cx.capacity(ctx, {ctx.layout.root: int(entry["size"]) if copy else 0})
     inputs = _inputs(ctx, name, seq, "verify", variants, _redact(ctx, name, m), warnings=warnings, bundle=bid)
@@ -122,15 +131,8 @@ def _drill(ctx: Ctx, ld: Loaded, bid: str, entry: dict[str, Any], command: list[
     record `restore-tested`, tear down; the live project is never touched (LIFECYCLE §4.9, §5.7; F13)."""
     name, layout = ld.name, ctx.layout
     warnings = cx.gate(ctx, TIER2, name)
-    made = _bundle_json(ctx, name, bid, entry)["deployment"]
-    if made.get("seq") is None:  # an imported adoption payload (M4)
-        raise Refused(f"bundle {bid} records no deployment of this instance", code="not-in-this-release")
-    dep = state.read_doc(layout.deployment_json(name, made["seq"]), "deployment")
-    snap = os.path.join(layout.deployment_snapshot(name, dep["seq"]), brand.MANIFEST_FILE)
-    m = parse_manifest(fs.read(snap), tool_version=__version__)
-    ids = sorted(set(dep["images"].values()))
-    if len(ctx.docker.inspect("image", ids)) != len(ids):  # `prepare` rebuilds removed images from M3
-        raise Refused(f"images of release {dep['release']} are no longer present", code="missing-image")
+    m, dep = _recorded(ctx, ld, bid, entry)
+    _images(ctx, dep)
     if m.drill.min_free_memory > (free := _memory() if m.drill.min_free_memory else 0):
         raise Refused(f"{free} bytes of memory available; the drill needs {m.drill.min_free_memory}", code="memory")
     _exported(name, dep)
@@ -204,13 +206,50 @@ def _exported(name: str, dep: dict[str, Any]) -> None:
         raise Refused(f"the project directory of {dep['release']} is missing", code="missing-export", next=nxt)
 
 
-def _current(ctx: Ctx, ld: Loaded, seq: int, reason: str = "") -> tuple[dict[str, Any], dict[str, Any]]:
-    """The recorded deployment's variant with this operation's template values."""
-    dep = _deployed(ld)[1]
+def _recorded(ctx: Ctx, ld: Loaded, bid: str, entry: dict[str, Any]) -> tuple[Manifest, dict[str, Any]]:
+    """The deployment a bundle records and the manifest that deployment ran (its snapshot): verify tasks and drills
+    run in the bundle's own release, never in the current one (LIFECYCLE §4.8, §4.9)."""
+    made = _bundle_json(ctx, ld.name, bid, entry)["deployment"]
+    if made.get("seq") is None:  # an imported adoption payload (M4)
+        raise Refused(f"bundle {bid} records no deployment of this instance", code="not-in-this-release")
+    dep = state.read_doc(ctx.layout.deployment_json(ld.name, made["seq"]), "deployment")
+    snap = os.path.join(ctx.layout.deployment_snapshot(ld.name, dep["seq"]), brand.MANIFEST_FILE)
+    return parse_manifest(fs.read(snap), tool_version=__version__), dep
+
+
+def _images(ctx: Ctx, dep: dict[str, Any]) -> None:
+    ids = sorted(set(dep["images"].values()))
+    if len(ctx.docker.inspect("image", ids)) != len(ids):  # `prepare` rebuilds removed images from M3
+        raise Refused(f"images of release {dep['release']} are no longer present", code="missing-image")
+
+
+def _variant(
+    ctx: Ctx, ld: Loaded, m: Manifest, dep: dict[str, Any], seq: int, reason: str = ""
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Recorded deployment `dep`'s variant under its manifest `m`, with this operation's template values."""
     _exported(ld.name, dep)
-    v, model = cx.current(ctx, ld)
+    v, model = cx.deployed(ctx, ld, m, dep)
     v["values"] |= {"op.seq": str(seq), "reason": reason, "target.release": dep["release"]}
     return v, model
+
+
+def _writers(ctx: Ctx, ld: Loaded, m: Manifest) -> list[str]:
+    """The writer services with a running container: what an offline backup stops and starts again, so the bundle's
+    consistency is what the capture saw. The record and the containers must agree (`changed-outside`, LIFECYCLE
+    §4.15): a writer that runs while the record says the instance is not running, or one with no container while it
+    says running. A stopped container under a running record may be a completed `stop <i> <service>` (§4.11): it is
+    left as it is, neither stopped nor started again."""
+    state_, found = ld.record.get("state"), dict[str, bool]()
+    for service, _, up in _containers(ctx, ld.name):
+        found[service] = found.get(service, False) or up
+    live = [w for w in m.services.writers if found.get(w)]
+    if state_ != "running" and live:
+        why = f"writer service {live[0]} runs while {ld.name} is {state_}"
+        raise Refused(why, code="changed-outside", next=f"{brand.CLI} stop {ld.name}")
+    if state_ == "running" and (gone := [w for w in m.services.writers if w not in found]):
+        why = f"writer service {gone[0]} has no container while {ld.name} is running"
+        raise Refused(why, code="changed-outside", next=f"{brand.CLI} restart {ld.name}")
+    return live
 
 
 def _naming(ctx: Ctx, name: str, m: Manifest, values: dict[str, str], klass: str) -> None:
