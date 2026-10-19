@@ -233,7 +233,8 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(host.tree_hash(H.layout.instances_dir), tree)
         res = H.cli("scheduled", "status")
         self.assertEqual(res[0], 5, res)
-        new = [f"new: {name} backup-old", f"new: {name} restore-test-old", f"next: {CLI} status"]
+        new = [f"now needs attention: {name}: backup-old", f"now needs attention: {name}: restore-test-old"]
+        new.append(f"next: {CLI} status")
         self.assertEqual(res[1].splitlines(), new, res)
 
         # backup, verify, drill: the live app keeps running (owner decision OD-6), the isolated project goes
@@ -335,7 +336,11 @@ class Lifecycle(unittest.TestCase):
         # scheduled status: the codes it reported are cleared; a second run finds nothing new and prints nothing
         res = H.cli("scheduled", "status")
         self.assertEqual(res[0], 5, res)
-        self.assertEqual(res[1].splitlines(), [f"cleared: {name} backup-old", f"cleared: {name} restore-test-old"])
+        gone = [
+            f"no longer needs attention: {name}: backup-old",
+            f"no longer needs attention: {name}: restore-test-old",
+        ]
+        self.assertEqual(res[1].splitlines(), gone)
         self.assertEqual(H.cli("scheduled", "status")[:2], (0, ""))
         res = H.cli("status", "--json")
         self.assertEqual(res[0], 0, res)

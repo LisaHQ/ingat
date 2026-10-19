@@ -26,7 +26,8 @@ def validate(ctx: Ctx, repo_dir: str, instance_file: str | None = None) -> None:
     inst = parse_instance(fs.read(os.path.abspath(instance_file))) if instance_file else None
     path = os.path.join(repo_dir, inst.manifest_path if inst else brand.MANIFEST_FILE)
     if not os.path.isfile(path):
-        raise Refused(f"{path} does not exist: not an app repository", code="invalid-app")
+        why = f"{path} not found: this folder is not an app that {brand.PRODUCT} can deploy (it has no manifest file)"
+        raise Refused(why, code="invalid-app")
     m = parse_manifest(fs.read(path), tool_version=__version__)
     errs = validate_against(inst, m) if inst else []
     errs += [f"compose.files: {f} does not exist" for f in m.files if not os.path.isfile(os.path.join(repo_dir, f))]

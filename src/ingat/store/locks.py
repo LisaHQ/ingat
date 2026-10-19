@@ -28,7 +28,11 @@ class Lock:
         except BaseException as e:
             os.close(fd)
             if isinstance(e, BlockingIOError):
-                raise CannotRun(f"{self.path} is busy: {self._held_by()}", code="lock-busy") from e
+                why = (
+                    f"Another command is still running and holds the lock {self.path} ({self._held_by()}). Wait for "
+                    "it to finish, then try again. Nothing was changed."
+                )
+                raise CannotRun(why, code="lock-busy") from e
             raise
         self.fd = fd
         try:

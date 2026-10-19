@@ -17,7 +17,7 @@ from ingat.adapters import git, override
 from ingat.adapters.compose import Compose, Project
 from ingat.adapters.docker import Docker
 from ingat.core.steps import in_selftest
-from ingat.model import records, templates
+from ingat.model import records, templates, words
 from ingat.model.errors import CannotRun, Refused
 from ingat.model.instance import NAME_RE, Instance, parse_instance, validate_against
 from ingat.model.manifest import Manifest, Probe, parse_manifest
@@ -70,10 +70,16 @@ def make_ctx(environ: Mapping[str, str], *, tty: bool = False) -> Ctx:
     (a client config can add proxy variables to every container or run credential helpers). `host init` creates it."""
     layout = state.Layout(_env(environ, "ROOT", brand.DEFAULT_ROOT), _env(environ, "BACKUPS", brand.DEFAULT_BACKUPS))
     if fs.listdir(layout.docker_config):
-        raise CannotRun(f"{layout.docker_config} must be an empty directory", code="docker-config")
+        raise CannotRun(docker_config_rule(layout.docker_config), code="docker-config")
     docker, compose = Docker(config_dir=layout.docker_config), Compose(layout.docker_config)
     hostname = _env(environ, "HOST", "") or socket.gethostname()
     return Ctx(layout, docker, compose, _env(environ, "IMAGE", ""), _env(environ, "OPERATOR", "root"), hostname, tty)
+
+
+def docker_config_rule(path: str) -> str:
+    return (
+        f"the folder {path} must exist and stay empty (it is {brand.PRODUCT}'s private Docker client settings folder)"
+    )
 
 
 def require_host(ctx: Ctx) -> dict[str, Any]:
@@ -81,10 +87,18 @@ def require_host(ctx: Ctx) -> dict[str, Any]:
     try:
         host = state.read_doc(ctx.layout.host_json, "host")
     except FileNotFoundError:
-        raise CannotRun("this host is not initialized", code="no-host", next=f"{brand.CLI} host init") from None
+        raise CannotRun(words.NOT_INITIALIZED, code="no-host", next=f"{brand.CLI} host init") from None
     if ctx.info.get("ID") != host.get("engine_id"):
-        raise CannotRun("the Docker engine ID differs from the one host.json records", code="engine-mismatch")
+        raise CannotRun(f"{words.ENGINE_MISMATCH}; nothing runs until that is resolved", code="engine-mismatch")
     return host
+
+
+def bad_name(name: str) -> str:
+    """The usage error of a name NAME_RE refuses (MANIFEST_SPEC §6.1)."""
+    rule = (
+        "use 1-30 characters, lowercase letters, digits and single dashes, starting with a letter (for example pg-prod)"
+    )
+    return f"{name!r} is not a valid instance name: {rule}"
 
 
 @dataclass(frozen=True)
@@ -98,7 +112,7 @@ class Loaded:
 
 def load(ctx: Ctx, name: str) -> Loaded:
     if not NAME_RE.fullmatch(name):
-        raise CannotRun(f"{name!r} is not an instance name", code="usage")
+        raise CannotRun(bad_name(name), code="usage")
     try:
         record = state.read_doc(ctx.layout.record_json(name), "instance")
     except FileNotFoundError:
@@ -261,7 +275,8 @@ def live_env(ctx: Ctx, ld: Loaded, m: Manifest, release: str, commit: str, app_e
             raise Refused(f"params.{k}: set the live subnet in instance.toml", code="not-in-this-release")
         if p.kind == "port" and k in given:
             if (e := entries.get(("port", given[k]))) and e.get("instance") != ld.name:
-                raise Refused(f"params.{k}: port {given[k]} is allocated to {e.get('instance')}", code="port-conflict")
+                why = f"params.{k}: port {given[k]} is reserved for the instance {e.get('instance')}"
+                raise Refused(why, code="port-conflict")
         elif p.kind == "port":
             mine = ("port", ld.name, k)
             own = [v for (kind, v), e in entries.items() if (kind, e.get("instance"), e.get("param")) == mine]
@@ -271,7 +286,8 @@ def live_env(ctx: Ctx, ld: Loaded, m: Manifest, release: str, commit: str, app_e
     if ports := [k for k, p in m.params.items() if p.kind == "port"]:  # a bound port would fail the Up mid-operation
         used = published(ctx, but=ld.name)
         for x in (k for k in ports if given[k] in used):
-            raise Refused(f"params.{x}: another container publishes port {given[x]}", code="port-conflict")
+            why = f"params.{x}: port {given[x]} is already taken by another container on this computer; choose a "
+            raise Refused(why + "free port", code="port-conflict")
     gens = ld.record.get("generations") or {}
     return params(m, ctx.layout, ld.name, given, values(ctx, ld, release, commit), gens, app_env)
 
@@ -321,7 +337,8 @@ def app_env(ctx: Ctx, ld: Loaded, m: Manifest, *, isolated: bool = False) -> tup
         path = os.path.join(ctx.layout.secrets_dir(ld.name), "env", key)
         if not fs.exists(path):
             if k.required:
-                raise Refused(f"app_env.{key}: the secret is not set", code="missing-secret")
+                where = f"put its value in the file env/{key} inside the instance's secrets folder"
+                raise Refused(f"app_env.{key}: this secret has not been set; {where}", code="missing-secret")
             continue
         try:
             rendered[key] = fs.read(path).decode()
@@ -453,7 +470,8 @@ def variant(
     model = config(ctx, name, export, m.files, env, text)
     cpu = bool(ctx.info.get("CpuCfsQuota") and ctx.info.get("CpuCfsPeriod"))
     if errors := model_errors(m, app, env) + policy_errors(m, model, spec, env, export, cpu, isolated is not None):
-        raise Refused(f"project {name} is refused by the Compose policy:\n" + "\n".join(errors), code="policy")
+        why = f"the app's Compose setup for {name} does not pass {brand.PRODUCT}'s checks and is refused:\n"
+        raise Refused(why + "\n".join(errors), code="policy")
     tv = values(ctx, ld, release, commit) | {f"image.{s}": i for s, i in images.items()}
     tv |= {f"param.{k}": v for k, v in env.items()}
     out = {"project": name, "directory": export, "files": list(m.files), "override": text, "env": dict(env)}
@@ -473,7 +491,7 @@ def current(ctx: Ctx, ld: Loaded) -> tuple[dict[str, Any], dict[str, Any]]:
     """The variant of the current deployment (F4)."""
     dep, m = ld.deployment, ld.manifest
     if dep is None or m is None:
-        raise Refused(f"{ld.name} has no deployment", code="wrong-state")
+        raise Refused(f"{ld.name} has not been deployed yet", code="wrong-state")
     return deployed(ctx, ld, m, dep)
 
 
@@ -530,14 +548,18 @@ def capacity(ctx: Ctx, needs: Mapping[str, int]) -> None:
     found: dict[int, list[Any]] = {}  # st_dev -> [free, needed, paths]
     for path in dict.fromkeys((ctx.layout.root, ctx.layout.backups, brand.PROBE_MOUNT, *needs)):
         if not fs.exists(path):
-            raise CannotRun(f"cannot measure the free space of {path}: it does not exist", code="cannot-measure")
+            raise CannotRun(
+                f"cannot check free disk space because the folder {path} does not exist", code="cannot-measure"
+            )
         dev, free = fs.statvfs(path)
         entry = found.setdefault(dev, [free, GIB, []])
         entry[1] += needs.get(path, 0)
         entry[2].append(path)
     for free, need, paths in found.values():
         if free < need:
-            raise Refused(f"{free} bytes free on the filesystem of {', '.join(paths)}; {need} needed", code="capacity")
+            why = f"not enough disk space: {free / GIB:.1f} GiB free on the disk holding {', '.join(paths)}, but "
+            why += f"{need / GIB:.1f} GiB is needed (including a 1 GiB safety margin); {brand.PRODUCT} never deletes "
+            raise Refused(why + "anything to make room", code="capacity")
 
 
 def payload_size(ctx: Ctx, ld: Loaded) -> int:

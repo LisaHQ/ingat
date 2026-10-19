@@ -26,6 +26,10 @@ from ingat.store import fs, state
 POLL = 0.5
 SOCKET = "/var/run/docker.sock"
 FLAGS = {"resume": ["--resume"], "abandon": ["--abandon"]}  # plans that re-enter the open operation
+CHOICE = (  # Ctrl-C while following on a terminal; anything but `c` detaches
+    "\nYou pressed Ctrl-C. The operation is still running. Type d to stop watching it (it keeps running), or c to "
+    "ask it to stop at its next safe point; Enter alone stops watching.\n[d]etach or [c]ancel? "
+)
 
 
 class Detach(Exception):
@@ -35,7 +39,11 @@ class Detach(Exception):
 def launch_and_follow(ctx: Ctx, plan: Plan, out: TextIO | None) -> Report:
     """Write the approved plan (write-once), start `<prefix><instance>` running `_exec`, follow it."""
     if not ctx.image:
-        raise CannotRun(f"{brand.env('IMAGE')} is not set: run the command through the wrapper", code="no-image")
+        raise CannotRun(
+            f"This command must be started through the `{brand.CLI}` script that the installer created (the setting "
+            f"{brand.env('IMAGE')} is missing, so it was started some other way). Nothing was changed.",
+            code="no-image",
+        )
     run_id, root, backups = secrets.token_hex(8), ctx.layout.root, ctx.layout.backups
     plan_hash = approval.save(ctx.layout, plan)
     args = ["_exec", plan.instance or "--host", plan_hash, run_id, *FLAGS.get(plan.op_kind, [])]
@@ -66,7 +74,8 @@ def attach(ctx: Ctx, name: str, out: TextIO | None) -> Report:
     cx.load(ctx, name)
     found = state.open_ops(ctx.layout, name)
     if not found:
-        return {"exit": 0, "code": "no-open-operation", "next": f"{brand.CLI} status {name}", "lines": []}
+        why = f"{name} has no operation running or waiting, so there is nothing to watch."
+        return {"exit": 0, "code": "no-open-operation", "next": f"{brand.CLI} status {name}", "lines": [why]}
     return follow(ctx, name, ctx.layout.op_dir(name, *found[-1]), brand.executor_name(name), None, out)
 
 
@@ -131,14 +140,19 @@ def _gone(ctx: Ctx, name: str | None, op_dir: str | None, launched: bool) -> Rep
     result = os.path.join(op_dir, "result.json") if op_dir else ""
     if result and fs.exists(result):
         return _outcome(state.read_doc(result, "result"), name)
-    code, why = "open-operation", f"the operation of {name} is still open and no executor runs it"
+    code = "executor-vanished" if launched else "open-operation"
     if launched:
-        code, why = "executor-vanished", f"the executor vanished; run `{status}`"
+        why = "The background worker that was running this operation disappeared before it reported a result, so the "
+        why += f"operation may be unfinished. Run `{status}` to see where it stands and what to do next."
+    else:
+        why = f"An operation on {name} was left unfinished and nothing is working on it right now. Run `{status}` to "
+        why += "see where it stopped and what to do next."
     return {"exit": 4, "code": code, "message": why, "next": status, "instance": name, "lines": [why]}
 
 
 def _detached(name: str | None) -> Report:
-    nxt, why = (f"{brand.CLI} attach {name}" if name else None), "detached; the operation runs on"
+    nxt = f"{brand.CLI} attach {name}" if name else None
+    why = "Stopped watching. The operation keeps running in the background and was not cancelled."
     return {"exit": 4, "code": "detached", "message": why, "next": nxt, "instance": name, "lines": [why]}
 
 
@@ -148,13 +162,14 @@ def _cancel(ctx: Ctx, name: str, out: TextIO | None) -> bool:
     from ingat.ops import lifecycle
 
     try:
-        if not render.ask("\n[d]etach or [c]ancel? ").strip().lower().startswith("c"):
+        if not render.ask(CHOICE).strip().lower().startswith("c"):
             return False
         render.say(out, lifecycle.cancel(ctx, name).get("lines") or ["cancel requested"])
     except (KeyboardInterrupt, Detach):
         return False
     except IngatError as e:  # no open operation yet: the executor has not opened it
-        render.say(out, [f"cannot cancel yet: {e.message}"])
+        render.say(out, [f"Cannot cancel now: {e.message}. Still watching; press Ctrl-C again to choose again "
+                         "(d stops watching)."])  # fmt: skip
     return True
 
 

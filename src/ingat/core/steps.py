@@ -26,6 +26,8 @@ SERVICE_LABEL = "com.docker.compose.service"
 ONEOFF_LABEL = "com.docker.compose.oneoff"
 UP_TIMEOUT = 600
 DOWN_TIMEOUT = 600
+UP = "starting the app's services (docker compose up)"  # what a failed Compose call was doing, in plain words
+STOP = "stopping the app's services (docker compose stop)"
 SELFTEST_MARKER = "selftest.json"  # instances/<i>/selftest.json: a selftest run's proof that it made the instance
 SELFTEST_KIND = "selftest-run"
 SELFTEST_RUNS: set[str] = set()  # the selftest runs this process drives, in memory only (ops/selftest.py)
@@ -123,23 +125,32 @@ def env_text(env: Mapping[str, str]) -> bytes:
     """`KEY='value'` lines (spike S6); a value that cannot be single-quoted is refused by key, never echoed."""
     for key, value in env.items():
         if any(c in value for c in "'\n\r\0"):
-            raise Refused(f"the value of {key} cannot be written single-quoted", code="unsafe-value")
+            why = (
+                f"The value of {key} contains a character that cannot be passed to the app safely (a single quote ', "
+                "a line break or a NUL character). Change that value. The value itself is not shown here."
+            )
+            raise Refused(why, code="unsafe-value")
     return "".join(f"{k}='{v}'\n" for k, v in env.items()).encode()
 
 
 def no_links(path: str) -> None:
     """A bind source must exist and have no symbolic link in any component (a link to the socket is a client)."""
     if not os.path.isabs(path) or os.path.normpath(path) != path:
-        raise Refused(f"bind source {path} is not a normalized absolute path", code="unsafe-path")
+        why = f"The path {path} cannot be used: it must be a plain absolute path (starting with /, no . or .. parts)."
+        raise Refused(why, code="unsafe-path")
     cur = ""
     for part in path.split("/")[1:]:
         cur += "/" + part
         try:
             link = stat.S_ISLNK(os.lstat(cur).st_mode)
         except FileNotFoundError as e:
-            raise Refused(f"bind source {path}: {cur} does not exist", code="unsafe-path") from e
+            raise Refused(f"The path {path} cannot be used: {cur} does not exist.", code="unsafe-path") from e
         if link:
-            raise Refused(f"bind source {path}: {cur} is a symbolic link", code="unsafe-path")
+            why = (
+                f"The path {path} cannot be used: {cur} is a symbolic link (a shortcut to another place), which is "
+                "never followed for safety."
+            )
+            raise Refused(why, code="unsafe-path")
 
 
 def safe_binds(op: Op, variant: str) -> None:
@@ -155,14 +166,21 @@ def safe_binds(op: Op, variant: str) -> None:
         except FileNotFoundError:
             st = None
         if st is None or not stat.S_ISREG(st.st_mode) or not st.st_size:
-            raise Refused(f"secret file {path} is not a regular, non-empty file", code="secret-file")
+            why = (
+                f"The secret file {path} is missing, empty, or not an ordinary file. Put the secret in that file as "
+                "plain text (its content is never shown here)."
+            )
+            raise Refused(why, code="secret-file")
         no_links(path)
 
 
 def check(res: Result, what: str) -> Result:
     if res.code != 0:
-        detail = "timed out" if res.timed_out else res.err.strip()[-300:]
-        raise Failed(f"{what} failed: {detail}", code="compose")
+        tail = res.err.strip()[-300:]
+        why = (
+            f"{what} did not succeed: it timed out" if res.timed_out else f"{what} did not succeed. Docker said: {tail}"
+        )
+        raise Failed(why, code="compose")
     return res
 
 
@@ -170,7 +188,7 @@ def compose_up(op: Op, t: EffectToken, proj: Project, services: list[str], timeo
     """`compose up`, then once more with new containers for the services whose container runs without a port it
     binds: Engine 29.9.0 never publishes the ports of a container whose start once failed on a port conflict, and
     `up` only starts such a container again (its configuration is unchanged)."""
-    check(op.compose.up(t, proj, services, timeout=timeout), "compose up")
+    check(op.compose.up(t, proj, services, timeout=timeout), UP)
     bare: set[Any] = set()
     for c in op.docker.containers(labels={brand.label("instance"): op.name}, project=proj.name):
         labels, ports = c["Config"].get("Labels") or {}, (c.get("NetworkSettings") or {}).get("Ports") or {}
@@ -178,7 +196,7 @@ def compose_up(op: Op, t: EffectToken, proj: Project, services: list[str], timeo
         if labels.get(ONEOFF_LABEL) != "True" and c["State"].get("Running") and any(not ports.get(k) for k in bound):
             bare.add(labels.get(SERVICE_LABEL))
     if again := sorted(s for s in services if s in bare):
-        check(op.compose.up(t, proj, again, timeout=timeout, recreate=True), "compose up")
+        check(op.compose.up(t, proj, again, timeout=timeout, recreate=True), UP)
 
 
 def once(path: str, doc: dict[str, Any], seq: int) -> None:
@@ -208,7 +226,12 @@ def allocate(layout: state.Layout, docker: Docker, name: str, seq: int, params: 
                 got[param] = str(net)
                 break
         else:
-            raise Refused(f"no free /24 left in the isolation pool {pool}", code="capacity")
+            why = (
+                f"No free private network range is left in the pool {pool} that test runs use: Docker networks or "
+                "earlier operations' reservations still hold them all. Remove Docker networks that are no longer "
+                "needed, finish or abandon unfinished operations, then try again. Nothing was changed."
+            )
+            raise Refused(why, code="capacity")
     return got
 
 
@@ -235,7 +258,9 @@ def remove_generation(op: Op, store: str, gen: str) -> None:
         raise Refused(f"generation {gen} of store {store} is not this operation's to delete", code="not-owned")
     for c in op.docker.containers():
         if c["State"]["Running"] and any(m.get("Source") == path for m in c.get("Mounts") or []):
-            raise Refused(f"generation {gen} of store {store} is in use by {c['Name'].lstrip('/')}", code="in-use")
+            who = c["Name"].lstrip("/")
+            why = f"The data copy {gen} of store {store} is still in use by the container {who}, so it was not deleted."
+            raise Refused(why, code="in-use")
     fs.remove_tree(path)
     fs.remove(path + ".json")
 
@@ -262,11 +287,19 @@ def obtain(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
             op.docker.pull(t, ref, tick=op.tick)
         img = op.docker.image(ref)
         if img is None:
-            raise Failed(f"image {ref} is not present after the pull", code="obtain")
+            why = (
+                f"The app image {ref} was downloaded (or expected to be present already) but cannot be found on this "
+                "computer afterwards. Try again; if it happens again, check Docker on this computer."
+            )
+            raise Failed(why, code="obtain")
         labels = img["Config"].get("Labels") or {}
         wrong = sorted(k for k, v in item.get("check_labels", {}).items() if labels.get(k) != v)
         if wrong:
-            raise Refused(f"image {ref} does not carry the expected {', '.join(wrong)}", code="image-labels")
+            why = (
+                f"The app image {ref} is not the build this release expects: its labels {', '.join(wrong)} do not "
+                "match. The app was not changed. Check that the release and the image belong together."
+            )
+            raise Refused(why, code="image-labels")
         repo = ref.split("@")[0]
         repo = repo.rsplit(":", 1)[0] if ":" in repo.rsplit("/", 1)[-1] else repo
         digest = next((d for d in img.get("RepoDigests") or [] if d.split("@")[0] == repo), None)
@@ -294,7 +327,7 @@ def create_generation(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
             raise Refused(f"generation {a['gen']} of store {a['store']} belongs to another operation", code="exists")
         fs.remove_tree(path)  # an interrupted attempt may have left it half made (owner or mode not yet set)
     elif fs.exists(path):
-        raise Refused(f"{path} exists without a generation marker", code="not-owned")
+        raise Refused(_not_ours(path), code="not-owned")
     else:
         doc = records.new_doc(
             "generation", instance=op.name, store=a["store"], generation=a["gen"], purpose=a["purpose"], op=op.seq
@@ -304,9 +337,17 @@ def create_generation(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
     return {"path": path}
 
 
+def _not_ours(path: str) -> str:
+    """A directory without a generation marker is not this tool's (F8)."""
+    return (
+        f"The folder {path} already exists but was not created by {brand.PRODUCT}, so it is left untouched. Move it "
+        "elsewhere if it is not needed, then try again."
+    )
+
+
 def stop(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
     a = step.args
-    check(op.compose.stop(t, op.project(a["variant"]), a["services"], timeout=a.get("timeout", 120)), "compose stop")
+    check(op.compose.stop(t, op.project(a["variant"]), a["services"], timeout=a.get("timeout", 120)), STOP)
     if not a.get("freeze"):
         return {}
     at = records.iso(records.utc_now())
@@ -327,8 +368,12 @@ def down(op: Op, p: Project, t: EffectToken, mine: dict[str, str]) -> None:
     found = [(c["Name"], c["Config"].get("Labels")) for c in op.docker.containers(project=p.name)]
     found += [(n["Name"], n.get("Labels")) for n in op.docker.networks({PROJECT_LABEL: p.name})]
     if bad := [x.lstrip("/") for x, labels in found if not mine.items() <= (labels or {}).items()]:
-        raise Refused(f"project {p.name} holds objects that are not its own: {', '.join(bad)}", code="foreign")
-    check(op.compose.down(t, p, timeout=DOWN_TIMEOUT), "compose down")
+        why = (
+            f"The project {p.name} (a group of containers) holds containers or networks that do not belong to this "
+            f"operation ({', '.join(bad)}), so it was left as it is for safety. Check them before removing anything."
+        )
+        raise Refused(why, code="foreign")
+    check(op.compose.down(t, p, timeout=DOWN_TIMEOUT), f"removing the containers of {p.name} (docker compose down)")
     left = [c["Name"].lstrip("/") for c in op.docker.containers(mine)] + [n["Name"] for n in op.docker.networks(mine)]
     if left:
         raise Failed(f"objects of {p.name} remain: {', '.join(left)}", code="teardown")
@@ -374,24 +419,34 @@ def delete(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
             labels = c["Config"].get("Labels") or {}  # owned: the instance label and its own Compose project (§7.5)
             project = labels.get(PROJECT_LABEL, "").split("--")[0]
             if not same or labels.get(brand.label("instance")) != op.name or project != op.name:
-                raise Refused(f"container {item['name']} is not the one planned for deletion", code="not-owned")
+                why = (
+                    f"The container {item['name']} is no longer the one this plan listed for deletion (it changed or "
+                    "belongs to something else), so it was not deleted. Plan again."
+                )
+                raise Refused(why, code="not-owned")
             op.docker.remove_container(t, item["id"])
         return {}
     bid = item["id"]
     if state.read_doc(op.layout.catalog(op.name, bid), "catalog")["bundle_hash"] != item["hash"]:
-        raise Refused(f"bundle {bid} changed since planning", code="not-owned")
+        why = f"The backup copy {bid} changed after this plan was made, so it was not deleted. Plan again."
+        raise Refused(why, code="not-owned")
     rec = op.record()
     for seq in (rec.get("current_deployment"), rec.get("previous_deployment")):
         if (
             seq
             and state.read_doc(op.layout.deployment_json(op.name, seq), "deployment").get("pre_change_bundle") == bid
         ):
-            raise Refused(f"bundle {bid} is paired with deployment {seq}", code="pinned")
+            why = f"The backup copy {bid} is the safety copy taken before deployment {seq}, so it is kept."
+            raise Refused(why, code="pinned")
     path = op.layout.bundle_dir(op.name, bid)
     gone = os.path.join(os.path.dirname(path), ".deleting-" + bid)
     if fs.exists(path):
         if bundle_hash(fs.read(os.path.join(path, SUMS))) != item["hash"]:
-            raise Refused(f"bundle {bid} on disk does not match its catalog entry", code="not-owned")
+            why = (
+                f"The backup copy {bid} on disk does not match its catalog entry, so it was not deleted. Check it "
+                f"with `{brand.CLI} verify`."
+            )
+            raise Refused(why, code="not-owned")
         fs.rename(path, gone)
     fs.remove_tree(gone)
     tomb = op.layout.catalog(op.name, f"{bid}.pruned")
@@ -409,14 +464,16 @@ def _selftest_generation(op: Op, store: str, gen: str) -> None:
         raise Refused(f"{op.name} is no selftest instance: its generations are not deleted", code="not-owned")
     if not fs.exists(path + ".json"):
         if fs.exists(path):
-            raise Refused(f"{path} exists without a generation marker", code="not-owned")
+            raise Refused(_not_ours(path), code="not-owned")
         return
     doc = state.read_doc(path + ".json", "generation")
     if (doc.get("instance"), doc.get("store"), doc.get("generation")) != (op.name, store, gen):
         raise Refused(f"generation {gen} of store {store} is not this instance's", code="not-owned")
     users = [c["Name"].lstrip("/") for c in op.docker.containers() if path in [m.get("Source") for m in c["Mounts"]]]
     if users:
-        raise Refused(f"generation {gen} of store {store} is in use by {', '.join(users)}", code="in-use")
+        who = ", ".join(users)
+        why = f"The data copy {gen} of store {store} is still in use by the containers {who}, so it was not deleted."
+        raise Refused(why, code="in-use")
     fs.remove_tree(path)
     fs.remove(path + ".json")
 
@@ -511,7 +568,7 @@ def undo(op: Op, step: Step, t: EffectToken) -> None:
         remove_generation(op, a["store"], a["gen"])
     elif step.type in ("Up", "Stop") and a["services"] and not op.variant(a["variant"]).get("isolated"):
         if step.type == "Up":
-            check(op.compose.stop(t, op.project(a["variant"]), a["services"], timeout=300), "compose stop")
+            check(op.compose.stop(t, op.project(a["variant"]), a["services"], timeout=300), STOP)
         back = a["variant"] if step.type == "Stop" else "current"
         if op.record().get("state") == "running" and back in op.plan.inputs["variants"]:
             safe_binds(op, back)

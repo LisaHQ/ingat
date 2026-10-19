@@ -28,6 +28,8 @@ from ingat.policy import gate
 from ingat.store import fs, state
 from tests.docker import test_planning as tp
 
+SKIPPED = "old backup copies were not cleaned up this time"
+
 
 @unittest.skipUnless(os.path.exists("/var/run/docker.sock"), "needs a scratch Docker daemon")
 class BackupPlanningTest(unittest.TestCase):
@@ -193,7 +195,7 @@ class BackupPlanningTest(unittest.TestCase):
         self.bundle("ahead", -1)  # dated after the host clock: retention refuses, the nightly backup goes on
         plan = self.planned(backup.plan_backup, "scheduled", None, False, scheduled=True)
         self.assertEqual((self.shape(plan), plan.fingerprint["bundles"]), (capture + verified, {}))
-        self.assertEqual([w.split(":")[0] for w in plan.inputs["warnings"]], ["retention skipped"])
+        self.assertEqual([w.split(":")[0] for w in plan.inputs["warnings"]], [SKIPPED])
         self.assertIn("after the host clock", plan.inputs["warnings"][0])
         for call in (
             lambda: self.planned(backup.plan_backup, "manual", None, True),
@@ -208,7 +210,7 @@ class BackupPlanningTest(unittest.TestCase):
         os.remove(f"{self.lay.certifications_dir}/x-selftest.json")  # a platform update: gate tier 2 refuses
         plan = self.planned(backup.plan_backup, "scheduled", None, False, scheduled=True)  # the backup goes on
         self.assertEqual((self.shape(plan), plan.fingerprint["bundles"]), (capture + verified, {}))
-        self.assertEqual([w.split(":")[0] for w in plan.inputs["warnings"]], ["retention skipped"])
+        self.assertEqual([w.split(":")[0] for w in plan.inputs["warnings"]], [SKIPPED])
         with self.assertRaises(CannotRun) as cm:  # an explicit prune is gate tier 2, as `prune --bundles --apply` is
             self.planned(backup.plan_backup, "manual", None, True)
         self.assertEqual((cm.exception.code, cm.exception.exit_code), ("uncertified", 2))

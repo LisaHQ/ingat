@@ -13,13 +13,25 @@ def approve(plan: Plan, *, tty: bool, ask: Callable[[str], str]) -> None:
     if plan.approval in ("A", "B"):
         return
     if plan.approval == "D":
-        raise Refused("this change needs class D approval, which arrives in M2", code="not-in-this-release")
+        why = (
+            "This change is of the most serious kind (class D: it needs you at a real terminal with a typed "
+            "challenge), and this version cannot approve such changes yet. Nothing was changed."
+        )
+        raise Refused(why, code="not-in-this-release")
     if not tty:
         raise CannotRun(
-            "a class C change needs a terminal to type the instance name (`apply` arrives in M2)", code="no-tty"
+            "This command needs your approval: the instance name must be typed on a terminal, and it was not started "
+            "from one (for example from a script or a scheduler). Run it yourself in a terminal window (`apply`, the "
+            "way to approve without one, arrives in M2). Nothing was changed.",
+            code="no-tty",
         )
-    if ask("Type the instance name to approve: ").strip() != plan.instance:
-        raise Refused("not approved; nothing was changed", code="not-approved")
+    prompt = (
+        "This command needs your approval before it runs. Any answer other than the instance name refuses it, and "
+        "nothing is changed.\nType the instance name to approve: "
+    )
+    if ask(prompt).strip() != plan.instance:
+        why = "The answer did not match the instance name: not approved; nothing was changed."
+        raise Refused(why, code="not-approved")
 
 
 def save(layout: state.Layout, plan: Plan) -> str:
@@ -38,10 +50,18 @@ def load(layout: state.Layout, plan_hash: str) -> Plan:
     try:
         data = fs.read(layout.plan(plan_hash))
     except FileNotFoundError as e:
-        raise CannotRun(f"no saved plan {plan_hash}", code="no-plan") from e
+        raise CannotRun(f"No saved plan with id {plan_hash} was found. Plan the change again.", code="no-plan") from e
     plan = Plan.from_doc(records.loads(data))
     if plan.hash != plan_hash:
-        raise Refused("plan file does not match its hash", code="plan-mismatch")
+        why = (
+            "The saved plan file was altered after it was approved, so it will not run. Nothing was changed; plan "
+            "again."
+        )
+        raise Refused(why, code="plan-mismatch")
     if records.parse_iso(plan.expires_at) < records.utc_now():
-        raise CannotRun("the plan has expired; plan again", code="plan-expired")
+        why = (
+            "This plan is too old to run safely (plans expire). Nothing was changed. Run the command again to make a "
+            "fresh plan."
+        )
+        raise CannotRun(why, code="plan-expired")
     return plan

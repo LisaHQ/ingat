@@ -46,7 +46,11 @@ class Compose:
         except FileNotFoundError:
             control = []  # Compose refuses a missing env file itself
         if control:
-            raise Refused(f"{p.env_file} sets {control[0].decode()}, a Compose setting", code="policy")
+            why = (
+                f"The app's settings set {control[0].decode()}, which is a Docker Compose or Docker control setting "
+                "and is not allowed in an app's settings. Remove that setting from the app's settings, then plan again."
+            )
+            raise Refused(why, code="policy")
         files = [*(os.path.join(p.directory, f) for f in p.files), *([p.override] if p.override else [])]
         head = ["compose", "-p", p.name, "--project-directory", p.directory, *(x for f in files for x in ("-f", f))]
         head += ["--env-file", p.env_file, *(x for prof in p.profiles for x in ("--profile", prof))]
@@ -56,8 +60,9 @@ class Compose:
         """stdout of `config` (warnings go to stderr); a failure is Refused with the redacted stderr."""
         res = self._run(p, "config", *opts, timeout=CONFIG_TIMEOUT, limit=QUERY_LIMIT)
         if res.code != 0:
-            detail = "timed out" if res.timed_out else res.err.strip()[-800:]
-            raise Refused(f"compose config of project {p.name} failed: {detail}", code="compose-config")
+            why = f"Docker Compose could not read the app's configuration for {p.name}. Nothing was changed. "
+            why += "It timed out." if res.timed_out else f"Compose said: {res.err.strip()[-800:]}"
+            raise Refused(why, code="compose-config")
         return whole(res, "compose config")
 
     # queries

@@ -83,7 +83,8 @@ def run(ctx: Ctx, *, host: bool, offline: bool, fixtures: str = FIXTURES) -> Rep
         raise CannotRun(f"platform build facts missing: {', '.join(missing)}", code="uncertified")
     image = ctx.docker.image(ctx.image) if ctx.image else None
     if image is None:  # the instances run the tool image by ID: nothing is pulled
-        raise CannotRun(f"the tool image {ctx.image or '(unset)'} is not on this daemon", code="no-image")
+        why = f"{brand.PRODUCT}'s own image {ctx.image or '(unset)'} is not present in Docker on this computer; "
+        raise CannotRun(why + f"reinstall {brand.PRODUCT}", code="no-image")
     command = [brand.CLI, "selftest", *(["--host"] if host else [])]
     with Lock(ctx.layout.host_lock, {"op": "selftest", "command": command, "operator": ctx.operator}):
         t = _start(ctx)

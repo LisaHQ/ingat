@@ -220,7 +220,10 @@ def validate_against(inst: Instance, m: Manifest) -> list[str]:
         elif k is None:
             errors.append(f"app_env.{name}: not declared by the manifest")
         elif k.secret:
-            errors.append(f"app_env.{name}: a secret key; its value is set with `secret set`, never here")
+            errors.append(
+                f"app_env.{name}: a secret key, so its value must never be written in instance.toml; remove it here "
+                f"and store it with `{brand.CLI} secret set` instead"
+            )
         elif k.tool_managed:
             errors.append(f"app_env.{name}: tool-managed; only holds and [rollback] env set it")
         elif k.allowed is not None and value not in k.allowed:

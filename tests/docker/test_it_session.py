@@ -37,7 +37,7 @@ from tests.harness import background, host
 CLI = brand.CLI
 APP_ENV = {"ALLOWED_ORIGINS": "http://127.0.0.1", "BASE_URL": "http://127.0.0.1", "MAIL_SENDER": "fx@example.invalid"}
 APP_ENV["PROXY_ADDRESS"] = "127.0.0.1"
-DETACHED = "detached; the operation runs on"
+DETACHED = "Stopped watching. The operation keeps running in the background and was not cancelled."
 CHOICE = "[d]etach or [c]ancel? "
 H: host.ScratchHost
 NAME = f"its{secrets.token_hex(3)}"

@@ -13,6 +13,7 @@ from ingat.core.executor import AUTO_ABANDON, CLOSE, orphan_check
 from ingat.core.journal import Journal
 from ingat.core.plan import Plan, fingerprint, new_plan
 from ingat.core.steps import ONEOFF_LABEL
+from ingat.model import words
 from ingat.model.errors import CannotRun, Refused
 from ingat.model.instance import NAME_RE
 from ingat.model.manifest import Manifest, Task, parse_manifest
@@ -60,20 +61,23 @@ def _either(name: str) -> str:
 def _busy(name: str, opened: Opened | None) -> None:
     """An open operation blocks another one, unless the executor may auto-abandon it (LIFECYCLE §3.4, F5)."""
     if opened and opened[1] not in AUTO_ABANDON:
-        raise CannotRun(f"operation {opened[0]} ({opened[1]}) is open", code="open-operation", next=_either(name))
+        why = f"operation {opened[0]} ({opened[1]}) has not finished; continue it or give it up first"
+        raise CannotRun(why, code="open-operation", next=_either(name))
 
 
 def _current(ctx: Ctx, ld: Loaded) -> tuple[Manifest, dict[str, Any], dict[str, Any]]:
     """The recorded deployment's manifest, variant `current` and model."""
     if ld.manifest is None:
-        raise Refused(f"{ld.name} has no deployment", code="wrong-state", next=f"{brand.CLI} deploy {ld.name} <ref>")
+        raise Refused(
+            f"{ld.name} has not been deployed yet", code="wrong-state", next=f"{brand.CLI} deploy {ld.name} <ref>"
+        )
     v, model = cx.current(ctx, ld)
     return ld.manifest, v, model
 
 
 def _frozen(ld: Loaded) -> None:
     if ld.record.get("state") == "frozen":
-        msg = f"{ld.name} is frozen: its writers stay stopped (`start --unfreeze`, class D, arrives in M2)"
+        msg = f"{ld.name} is frozen: {words.FROZEN}; unfreezing (`start --unfreeze`) is not in this release yet"
         raise Refused(msg, code="frozen", next=f"{brand.CLI} status {ld.name}")
 
 
@@ -186,7 +190,8 @@ def _task(m: Manifest, name: str) -> Task:
     only = [s for s in t.mounts.values() if s in ("bundle", "stage") or s.startswith("generation:")]
     if not t.operator or t.image != "current" or only:
         why = f" (it mounts {only[0]})" if only else ""
-        raise Refused(f"task {name} runs only inside the operations that use it{why}", code="not-operator")
+        why = f"task {name} cannot be run on its own; it runs only as part of the operations that use it{why}"
+        raise Refused(why, code="not-operator")
     return t
 
 
@@ -244,9 +249,11 @@ def plan_task(ctx: Ctx, name: str, task: str, args: Given, inputs: Given, schedu
     values, files = task_args(t, args), task_inputs(ctx, t, inputs)
     terminal, approval = "terminal" in (t.stdin, t.stdout), "B" if t.effect == "read" else "C"
     if scheduled and (terminal or approval != "B"):
-        raise CannotRun(f"task {task} needs a terminal or class C approval; scheduled has neither", code="unattended")
+        why = f"task {task} needs a person at a terminal or an approval, so it cannot run from the scheduler"
+        raise CannotRun(why, code="unattended")
     if t.stdin == "terminal" and not ctx.tty:
-        raise CannotRun(f"task {task} reads from the terminal; run it on one", code="no-tty")
+        why = f"task {task} asks for input on the terminal; run it from an interactive terminal, not from a script"
+        raise CannotRun(why, code="no-tty")
     if t.effect != "read":
         _frozen(ld)
     if model is None and t.mounts:
@@ -293,7 +300,7 @@ def cancel(ctx: Ctx, name: str) -> dict[str, Any]:
     runs in it stops with Ctrl-C on its terminal, or with `docker stop` of its executor). The instance file is not
     read: an edit of it for the next deploy must not keep a running operation from stopping."""
     if not NAME_RE.fullmatch(name):
-        raise CannotRun(f"{name!r} is not an instance name", code="usage")
+        raise CannotRun(cx.bad_name(name), code="usage")
     if not fs.exists(ctx.layout.record_json(name)):
         raise Refused(f"there is no instance {name}", code="unknown-instance")
     opened = _opened(ctx, name)
@@ -301,7 +308,8 @@ def cancel(ctx: Ctx, name: str) -> dict[str, Any]:
         raise Refused(f"{name} has no open operation", code="wrong-state", next=f"{brand.CLI} status {name}")
     seq, kind, _ = opened
     if _pause(ctx, name, opened) is not None:
-        msg = f"operation {seq} ({kind}) is paused: a cancel request would end its resume too"
+        msg = f"operation {seq} ({kind}) is paused and waiting for you, so cancel does not apply: continue it with "
+        msg += "resume or give it up with abandon"
         raise Refused(msg, code="wrong-state", next=_either(name))
     with contextlib.suppress(FileExistsError):  # asked before
         fs.write_once(os.path.join(ctx.layout.op_dir(name, seq, kind), "cancel"), b"")

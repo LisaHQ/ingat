@@ -26,6 +26,8 @@ from ingat.store import fs, state
 from tests.docker.helpers import COMMIT, IMAGE, RELEASE, Lab
 
 SKIP = not os.path.exists("/var/run/docker.sock")
+DOWN = "service app is not running, although the app should be running"
+FOREIGN = "sits in this app's Docker project but does not belong to this instance"
 
 
 def tree_hash(root: str) -> str:
@@ -167,7 +169,13 @@ class StatusTest(unittest.TestCase):
             self.wait_running(lab)
             rep = self.status(st.status, n)
             self.assertEqual(
-                rep["attention"], {"drift": ["service app differs from the configuration of deployment 1"]}
+                rep["attention"],
+                {
+                    "drift": [
+                        "service app is running with settings that differ from deployment 1; restart the app to put "
+                        "the deployed settings back"
+                    ]
+                },
             )
             self.assertEqual((rep["exit"], rep["next"]), (5, f"{brand.CLI} restart {n}"))
         finally:
@@ -219,7 +227,7 @@ class StatusTest(unittest.TestCase):
         self.lab.cli("stop", cid)
         try:
             rep = self.status(st.status, self.lab.name)
-            self.assertEqual(rep["attention"], {"changed-outside": ["service app is not running"]})
+            self.assertEqual(rep["attention"], {"changed-outside": [DOWN]})
             self.assertEqual((rep["exit"], rep["next"]), (5, f"{brand.CLI} restart {self.lab.name}"))
         finally:
             self.lab.cli("start", cid)
@@ -235,8 +243,8 @@ class StatusTest(unittest.TestCase):
         try:
             self.assertEqual(net.returncode, 0, net.stderr)
             rep = self.status(st.status, n)
-            why = [f"container {name} is in project {n} but not labelled as its own"]
-            why.append(f"network {name} is in project {n} but not labelled as its own")
+            foreign = f"{FOREIGN} ({brand.PRODUCT} did not create it for {n}); it is left untouched"
+            why = [f"container {name} {foreign}", f"Docker network {name} {foreign}"]
             self.assertEqual(rep["attention"], {"foreign": why})
             self.assertEqual((rep["exit"], rep["next"]), (5, f"{brand.CLI} ps {n}"))
             ps = self.status(st.ps, n)["containers"]
@@ -306,7 +314,7 @@ class StatusTest(unittest.TestCase):
             time.sleep(1.1)  # the next second: past the stop's span
             lab.cli("stop", cid)
             rep = self.status(st.status, n)
-            self.assertEqual(rep["attention"], {"changed-outside": ["service app is not running"]})
+            self.assertEqual(rep["attention"], {"changed-outside": [DOWN]})
         finally:
             lab.cli("start", cid)
             self.wait_running(lab)
@@ -324,13 +332,15 @@ class StatusTest(unittest.TestCase):
         os.makedirs(op)
         try:
             rep = self.status(st.status, lab.name)
-            self.assertEqual(rep["attention"], {"open-operation": ["operation 5 (backup) is interrupted"]})
+            self.assertEqual(
+                rep["attention"], {"open-operation": ["operation 5 (backup) was interrupted before it finished"]}
+            )
             self.assertEqual((rep["exit"], rep["next"]), (5, f"{brand.CLI} resume {lab.name}"))
             history = self.status(st.history, lab.name)["operations"]
             self.assertEqual([(r["seq"], r["outcome"]) for r in history], [(1, "completed"), (5, "open")])
             before = tree_hash(lab.base)
             rep = self.status(st.scheduled_status)
-            self.assertEqual((rep["exit"], rep["lines"]), (5, [f"new: {lab.name} open-operation"]))
+            self.assertEqual((rep["exit"], rep["lines"]), (5, [f"now needs attention: {lab.name}: open-operation"]))
             doc = state.read_doc(att, "attention")
             self.assertEqual(doc["codes"], {lab.name: ["open-operation"]})
             os.remove(att)
@@ -342,7 +352,7 @@ class StatusTest(unittest.TestCase):
         finally:
             os.rmdir(op)
         rep = self.status(st.scheduled_status)
-        self.assertEqual((rep["exit"], rep["lines"]), (5, [f"cleared: {lab.name} open-operation"]))
+        self.assertEqual((rep["exit"], rep["lines"]), (5, [f"no longer needs attention: {lab.name}: open-operation"]))
         self.assertEqual(state.read_doc(att, "attention")["codes"], {})
         self.assertEqual(self.status(st.scheduled_status)["exit"], 0)
 

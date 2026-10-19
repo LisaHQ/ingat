@@ -43,7 +43,7 @@ def create(ctx: Ctx, name: str, data: bytes, ref: str) -> dict[str, Any]:
     instances on a host it is about to certify."""
     layout = ctx.layout
     if not NAME_RE.fullmatch(name):
-        raise CannotRun(f"{name!r} is not an instance name (MANIFEST_SPEC §6.1)", code="usage")
+        raise CannotRun(cx.bad_name(name), code="usage")
     host = cx.require_host(ctx)
     inst = parse_instance(data)
     if inst.name != name:
@@ -64,7 +64,10 @@ def create(ctx: Ctx, name: str, data: bytes, ref: str) -> dict[str, Any]:
     cx.supported(m)  # M1 has no way to remove an instance it registered but cannot deploy
     if left := [s for s in m.stores if fs.listdir(os.path.dirname(layout.data_gen(name, s, "g1")))]:
         # their markers name this instance, so a new lineage could take over or delete them (F7, F8)
-        raise Refused(f"stores {', '.join(left)}: generations of an earlier instance {name} remain", code="exists")
+        why = f"data copies of an earlier instance named {name} still exist for store(s) {', '.join(left)}; "
+        raise Refused(
+            why + f"{brand.PRODUCT} never deletes data, so move them away or choose another name", code="exists"
+        )
     _exclusive(ctx, ld, m)
     ports = cx.allocate_ports(ctx, name, m, inst)
     subnets = _subnets(ctx, name, m, inst, (host.get("pools") or {}).get("isolation"))
@@ -89,7 +92,8 @@ def create(ctx: Ctx, name: str, data: bytes, ref: str) -> dict[str, Any]:
     lines = [f"initialized {name}: {m.app}, environment {inst.environment}, commit {src.commit}"]
     lines += [f"params.{k} = {v}" for k, v in (ports | subnets).items()]
     lines += [f"secrets.{k}: generated" for k in made] + [f"secrets.{k}: kept" for k in kept]
-    lines += [f"secrets.{k}: not set" for k in m.secrets if k not in kept | made]
+    where = "put its value in the instance's secrets folder before deploying"
+    lines += [f"secrets.{k}: not set ({where})" for k in m.secrets if k not in kept | made]
     out = {"exit": 0, "code": "ok", "next": f"{brand.CLI} deploy {name} {ref}", "lines": lines, "instance": name}
     return out | {"app": m.app, "commit": src.commit, "release": src.release, "params": ports | subnets}
 
@@ -101,7 +105,8 @@ def _foreign(ctx: Ctx, name: str) -> None:
     found = [f"container {c['Name'].lstrip('/')}" for c in d.containers(project=name)]
     found += [f"network {n['Name']}" for n in d.networks(label)] + [f"volume {v['Name']}" for v in d.volumes(label)]
     if found:
-        msg = f"a Compose project named {name} exists on this daemon ({', '.join(found)}); choose another name"
+        msg = f"Docker already has a project named {name} ({', '.join(found)}); it belongs to no instance here and is "
+        msg += "never touched, so choose another instance name"
         raise Refused(msg, code="foreign")
 
 

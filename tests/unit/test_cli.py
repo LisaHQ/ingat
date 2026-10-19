@@ -25,6 +25,7 @@ from ingat.ops import deploy
 from ingat.store import state
 
 NAME = "lite-test"
+C_WORDS = "changes the app; you must type the instance name to approve"  # class C in the plan summary head
 DONE = Res(0, "completed", "completed", 1, None)  # what the in-process executor answers
 STALE = Res(1, "stale-plan", f"{NAME} changed since this plan was made; plan again", None, None)
 
@@ -147,17 +148,21 @@ class RenderTest(unittest.TestCase):
     def test_plan_summary(self) -> None:
         p = plan(state.Layout("/r", "/b"), warnings=["Engine 30.0 is not tested"])
         lines = render.plan_summary(p)
-        self.assertEqual(lines[0], f"deploy {NAME} at r1: approval class C, 3 step(s)")
-        self.assertEqual(lines[1], "  1. Obtain images=sha256:ab  [scratch]")
-        self.assertEqual(lines[2], "  2. RunTask task=migrate effect=data  [forward, forward point]")
+        self.assertEqual(lines[0], f"deploy {NAME} at r1: approval class C ({C_WORDS}), 3 step(s)")
+        self.assertEqual(lines[1], "  1. Obtain (get the app's images) images=sha256:ab  [scratch]")
+        forward = "forward point: cannot be undone after this step; if it fails, the app is kept stopped so your data "
+        forward += "stays safe"
+        self.assertEqual(lines[2], f"  2. RunTask (run an app task) task=migrate effect=data  [forward, {forward}]")
         self.assertEqual(lines[-1], "warning: Engine 30.0 is not tested")
 
     def test_plan_summary_of_a_resume_or_abandon_names_the_open_operation(self) -> None:
         inputs = {"seq": 3, "op_dir": "/r/i/ops/3-deploy", "into_op": 3, "warnings": ["w"]}
-        for kind, what in (("resume", "resumes"), ("abandon", "abandons")):
+        words = {"resume": "continues unfinished", "abandon": "gives up, undoes what it can and closes unfinished"}
+        for kind, what in words.items():
             p = new_plan(kind, NAME, "C", [brand.CLI, kind, NAME], {}, inputs, [])
             lines = render.plan_summary(p)
-            self.assertEqual(lines, [f"{kind} {NAME}: approval class C, {what} open operation 3", "warning: w"])
+            head = f"{kind} {NAME}: approval class C ({C_WORDS}), {what} operation 3"
+            self.assertEqual(lines, [head, "warning: w"])
             self.assertNotIn("0 step", "\n".join(lines))
 
     def test_report_and_error(self) -> None:
@@ -241,7 +246,7 @@ class MainTest(Base):
         ):
             code, _, err = self.main("deploy", NAME, "r1")
             self.assertEqual((code, prepare.called), (2, False))
-            self.assertIn(f"{brand.CLI}: deploy is class C", err)
+            self.assertIn(f"{brand.CLI}: deploy changes your app, so you must approve it", err)
             self.assertIn(f"next: {brand.CLI} prepare {NAME} r1\n", err)  # prepare is class B: no terminal needed
             code, out, _ = self.main("deploy", NAME, "r1", "--json")
         self.assertEqual((code, prepare.called), (2, False))
@@ -327,7 +332,8 @@ class MainTest(Base):
             mock.patch.object(follow, "launch_and_follow", launch),
         ):
             code, out, _ = self.main("scheduled", "backup", NAME)
-        line = f"scheduled backup {NAME}: completed (operation 2); operation 1 (backup) abandoned-auto\n"
+        line = f"scheduled backup {NAME}: completed (operation 2); the earlier unfinished operation 1 (backup) was "
+        line += "undone and closed automatically first\n"
         self.assertEqual((code, out), (0, line))
 
     def test_the_table_class_is_a_floor(self) -> None:
@@ -489,7 +495,8 @@ class FollowTest(Base):
         self.assertEqual(
             (rep["exit"], rep["code"], rep["next"]), (4, "executor-vanished", f"{brand.CLI} status {NAME}")
         )
-        self.assertEqual(rep["message"], f"the executor vanished; run `{brand.CLI} status {NAME}`")
+        want = f"disappeared before it reported a result, so the operation may be unfinished. Run `{brand.CLI} status"
+        self.assertIn(f"{want} {NAME}`", rep["message"])
 
     def test_open_operation_without_executor(self) -> None:
         d = self.layout.op_dir(NAME, 1, "deploy")

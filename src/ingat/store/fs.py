@@ -21,8 +21,11 @@ _CHUNK = 1 << 20
 Entry = tuple[str, os.stat_result, int, str]  # relpath ("" for the root), lstat, parent directory fd, name
 
 
+LINK = "is a symbolic link (a shortcut to another place), which is never followed for safety"
+
+
 def _refuse(path: str, what: str) -> Refused:
-    return Refused(f"{path} {what}", code="unsafe-path")
+    return Refused(f"{path} {what}, so it is not used", code="unsafe-path")
 
 
 @contextlib.contextmanager
@@ -43,7 +46,7 @@ def _open_at(dfd: int, name: str, flags: int, path: str, mode: int = 0o600) -> i
         return os.open(name, flags | os.O_NOFOLLOW | os.O_CLOEXEC, mode, dir_fd=dfd)
     except OSError as e:
         if e.errno in (errno.ELOOP, errno.ENOTDIR):
-            raise _refuse(path, "is a symbolic link" if e.errno == errno.ELOOP else "is not a directory") from e
+            raise _refuse(path, LINK if e.errno == errno.ELOOP else "is not a directory") from e
         raise
 
 
@@ -227,7 +230,9 @@ def _below(fd: int, prefix: str, root: str) -> Iterator[Entry]:
         rel = prefix + name
         st = os.stat(name, dir_fd=fd, follow_symlinks=False)
         if not (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)):
-            raise _refuse(os.path.join(root, rel), "is a symbolic link or special file")
+            what = "is a symbolic link (a shortcut to another place) or a special file, neither of which is used for "
+            what += "safety"
+            raise _refuse(os.path.join(root, rel), what)
         yield rel, st, fd, name
         if stat.S_ISDIR(st.st_mode):
             with _fd(_open_at(fd, name, _DIR, os.path.join(root, rel))) as sub:

@@ -152,7 +152,7 @@ class Gate(unittest.TestCase):
         self.assertRegex(res[1], rf"\Ascheduled backup {NAME}: completed \(operation [0-9]+\)\n\Z")
         _, plan, result = self.last("backup")
         self.assertFalse([s for s in plan["steps"] if s["type"] == "Delete"], plan["steps"])
-        self.assertIn(f"retention skipped: {why}", result["warnings"])
+        self.assertIn(f"old backup copies were not cleaned up this time: {why}", result["warnings"])
 
     # the suites ----------------------------------------------------------------------------------------------
     def test_1_untested_engine(self) -> None:

@@ -33,8 +33,9 @@ def roots(layout: state.Layout) -> list[str]:
         mode = stat.S_IMODE(st.st_mode)
         ok = (st.st_gid, mode) == (0, 0o700) if strict else not mode & 0o022
         if not (stat.S_ISDIR(st.st_mode) and st.st_uid == 0 and ok):
-            want = "a root:root 0700 directory" if strict else "a root-owned directory no other account can write"
-            out.append(f"{path} must be {want} (found {st.st_uid}:{st.st_gid} {mode:04o})")
+            want = "a folder owned by root and private to root (root:root, permissions 0700)"
+            want = want if strict else "a folder owned by root that no other account can write to"
+            out.append(f"{path} must be {want}; found owner {st.st_uid}:{st.st_gid} and permissions {mode:04o}")
     return out
 
 
@@ -60,9 +61,11 @@ def risks(f: dict[str, Any]) -> list[str]:
     runc = f["versions"].get("runc")
     out = []
     if tuple(int(x) for x in re.findall(r"[0-9]+", str(runc or ""))[:3]) < RUNC_FIXED:
-        out.append(f"runc {runc or 'of unknown version'} is older than 1.1.12 (CVE-2024-21626)")
+        why = f"the container runtime runc ({runc or 'unknown version'}) is older than 1.1.12 and has a known security "
+        out.append(why + "hole (CVE-2024-21626); update Docker")
     if not any("name=seccomp" in o for o in f["facts"]["security_options"]):
-        out.append("the daemon runs containers without seccomp")
+        why = "Docker runs containers without the seccomp safety filter, which is weaker than normal; check the Docker "
+        out.append(why + "setup")
     return out
 
 
@@ -71,8 +74,8 @@ def _tier2(ctx: Ctx) -> tuple[str | None, str]:
     try:
         cx.gate(ctx, gate.TIER2)
     except CannotRun as e:
-        return e.next, f"gate tier 2 refuses: {e.message}"
-    return None, "gate tier 2: this platform build is certified"
+        return e.next, f"changes are not allowed on this computer yet (gate tier 2 refuses): {e.message}"
+    return None, "this computer's Docker build is certified, so every command may run (gate tier 2)"
 
 
 def host_init(ctx: Ctx) -> dict[str, Any]:
@@ -86,9 +89,8 @@ def host_init(ctx: Ctx) -> dict[str, Any]:
         old = state.read_doc(layout.host_json, "host") if fs.exists(layout.host_json) else {}
         now = facts(ctx)
         if old and old.get("engine_id") != now["engine_id"]:
-            raise CannotRun(
-                "host.json records another Docker engine (host rebind arrives in M4)", code="engine-mismatch"
-            )
+            why = f"this {brand.PRODUCT} folder was set up with a different Docker engine; moving it to another engine "
+            raise CannotRun(why + "is not supported in this release", code="engine-mismatch")
         for path in (layout.docker_config, layout.plans_dir, os.path.dirname(layout.runs_dir), layout.inbox):
             fs.mkdirs(path, 0o700)
         image = old.get("tool_image") or {}

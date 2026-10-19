@@ -118,7 +118,8 @@ def run(
             start_new_session=True,
         )
     except OSError as e:
-        raise CannotRun(f"cannot run {argv[0]}: {e.strerror}", code="cannot-start") from e
+        why = f"The program {argv[0]} could not be started ({e.strerror}). Check that it is installed and on the PATH."
+        raise CannotRun(why, code="cannot-start") from e
     with proc, selectors.DefaultSelector() as sel:
         try:
             if proc.stdin and isinstance(stdin, bytes):

@@ -113,10 +113,19 @@ def resolve(bare_dir: str, ref: str) -> str:
     elif _REF.fullmatch(ref):
         names = [f"refs/tags/{ref}", f"refs/heads/{ref}"]
     else:
-        raise Refused(f"ref {ref!r} is not a tag, a branch or a full commit id", code="invalid-ref")
+        why = (
+            f"{ref!r} is not a version that can be deployed: give a release tag, a branch name or a full 40-character "
+            "commit id."
+        )
+        raise Refused(why, code="invalid-ref")
     found = {c for c in (_rev(bare_dir, n) for n in names) if c}
     if len(found) != 1:
-        raise Refused(f"ref {ref!r} {'names different commits' if found else 'was not found'}", code="invalid-ref")
+        why = (
+            "names two different commits (a tag and a branch share that name); give the full commit id"
+            if found
+            else "was not found in the app repository"
+        )
+        raise Refused(f"The version {ref!r} {why}.", code="invalid-ref")
     return found.pop()
 
 

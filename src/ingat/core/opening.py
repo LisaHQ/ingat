@@ -53,7 +53,11 @@ def secret_values(plan: Plan) -> list[str]:
     try:
         texts = [fs.read(x).decode() for x in paths if fs.exists(x)]
     except UnicodeDecodeError as e:
-        raise Refused("a secret file is not UTF-8 text, so it could not be redacted", code="secret-file") from e
+        why = (
+            "One of the secret files is not plain text (UTF-8). Its value could not be hidden from logs safely, so "
+            "nothing was run and nothing was changed. Save the secret as a plain text file."
+        )
+        raise Refused(why, code="secret-file") from e
     return texts + [x.rstrip("\r\n") for x in texts]  # an app reads a file secret without its final newline
 
 
@@ -77,16 +81,22 @@ def app_env(layout: state.Layout, name: str, spec: dict[str, Any] | None) -> tup
     try:
         lines = {k: fs.read(s["secret_file"]).decode() if "secret_file" in s else s["value"] for k, s in spec["lines"]}
     except UnicodeDecodeError as e:
-        raise Refused("an app env secret file is not UTF-8 text", code="secret-file") from e
+        why = (
+            "A secret file used in the app's settings is not plain text (UTF-8). Nothing was changed; save it as a "
+            "plain text file."
+        )
+        raise Refused(why, code="secret-file") from e
     data, path = steps.env_text(lines), os.path.join(layout.env_dir(name), f"{spec['sha256']}.env")
     if (
         records.sha256_hex(data) != spec["sha256"]
         or spec["path"] != path
         or (fs.exists(path) and fs.read(path) != data)
     ):
-        raise Refused(
-            "the app env file differs from the plan (a secret or setting changed); plan again", code="stale-plan"
+        why = (
+            "A setting or secret of the app changed after this plan was made, so the plan no longer matches. Nothing "
+            "was changed. Run the command again to make a fresh plan."
         )
+        raise Refused(why, code="stale-plan")
     return path, data
 
 

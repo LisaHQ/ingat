@@ -224,7 +224,8 @@ class Isolation(unittest.TestCase):
         res = H.cli("scheduled", "backup", name)
         self.assertEqual((res[0], res[2]), (0, ""), res)
         self.assertRegex(res[1], rf"\Ascheduled backup {name}: completed \(operation [0-9]+\); "
-                                 rf"operation {seq} \(drill\) abandoned-auto\n\Z")  # fmt: skip
+                                 rf"the earlier unfinished operation {seq} \(drill\) was undone and closed "
+                                 r"automatically first\n\Z")  # fmt: skip
         self.assertEqual(state.read_doc(f"{op}/result.json", "result")["outcome"], "abandoned-auto")
         steps = [json.loads(x) for x in Path(op, "steps.jsonl").read_text().splitlines()]
         teardown = len(plan["steps"])

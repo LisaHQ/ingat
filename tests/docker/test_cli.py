@@ -191,7 +191,8 @@ class CliTest(unittest.TestCase):
         before = tree(self.root)
         code, out, err = self.run_cli("host", "init")  # class C without a terminal
         self.assertEqual((code, out), (2, ""), err)
-        self.assertTrue(err.startswith(f"{brand.CLI}: a class C change needs a terminal"), err)
+        want = f"{brand.CLI}: This command needs your approval: the host name must be typed"
+        self.assertTrue(err.startswith(want), err)
         self.assertEqual(tree(self.root), before)
         code, text = self.run_tty("host", "init", answer=HOST)
         self.assertEqual(code, 0, text)

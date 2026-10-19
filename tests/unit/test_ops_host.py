@@ -111,7 +111,8 @@ class HostTest(Base):
         self.assertEqual(f["versions"]["runc"], "1.1.7")
         self.assertEqual(gate.platform_build(f), cx.build_facts(self.ctx))  # host.json holds the certification key
         self.assertEqual(f["capabilities"], {"cpu_cfs_quota": True, "cpu_cfs_period": True, "memory_limit": True})
-        self.assertEqual([r.split()[0] for r in host.risks(f)], ["runc", "the"])
+        self.assertEqual([r.split()[0] for r in host.risks(f)], ["the", "Docker"])
+        self.assertIn("runc", host.risks(f)[0])
         f["versions"]["runc"], f["facts"]["security_options"] = "1.1.12", ["name=seccomp,profile=builtin"]
         self.assertEqual(host.risks(f), [])
         f["versions"]["runc"] = None
@@ -127,7 +128,8 @@ class HostTest(Base):
         os.chmod(self.layout.backups, 0o770)
         found = host.roots(self.layout)
         self.assertEqual(len(found), 2)
-        self.assertIn(f"{self.layout.root} must be a root:root 0700 directory (found 0:0 0755)", found)
+        want = "a folder owned by root and private to root (root:root, permissions 0700)"
+        self.assertIn(f"{self.layout.root} must be {want}; found owner 0:0 and permissions 0755", found)
         shutil.rmtree(self.layout.backups)
         self.assertIn("does not exist", host.roots(self.layout)[1])
 

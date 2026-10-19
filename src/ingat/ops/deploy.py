@@ -13,7 +13,7 @@ from ingat.adapters.docker import PROJECT_LABEL
 from ingat.adapters.runner import Redactor
 from ingat.core.journal import Journal
 from ingat.core.plan import Plan, fingerprint, new_plan
-from ingat.model import records, templates
+from ingat.model import records, templates, words
 from ingat.model.errors import Refused
 from ingat.model.manifest import Manifest
 from ingat.ops import context as cx
@@ -98,7 +98,11 @@ def foreign(ctx: Ctx, name: str) -> None:
     found += [(f"network {x['Name']}", x.get("Labels")) for x in d.networks(label)]
     found += [(f"volume {x['Name']}", x.get("Labels")) for x in d.volumes(label)]
     if foreign := [what for what, labels in found if (labels or {}).get(own) != name]:
-        raise Refused(f"project {name} holds objects that are not its own: {', '.join(foreign)}", code="foreign")
+        why = f"Docker holds things under this app's name that do not belong to this instance ({', '.join(foreign)}); "
+        raise Refused(
+            why + f"{brand.PRODUCT} never touches them, so remove them yourself before this command can run",
+            code="foreign",
+        )
 
 
 def _secrets(ctx: Ctx, ld: Loaded, m: Manifest, models: Iterable[Mapping[str, Any]]) -> list[str]:
@@ -106,7 +110,8 @@ def _secrets(ctx: Ctx, ld: Loaded, m: Manifest, models: Iterable[Mapping[str, An
     must be a regular, non-empty file now: a start that misses one would fail past the forward point."""
     bound = sorted({x["file"] for mo in models for x in (mo.get("secrets") or {}).values() if "file" in x})
     if bad := [p for p in bound if not fs.exists(p) or not fs.read(p)]:
-        raise Refused(f"secret file(s) {', '.join(bad)} missing or empty", code="missing-secret")
+        why = f"these secret files are missing or empty: {', '.join(bad)}; fill them in before deploying"
+        raise Refused(why, code="missing-secret")
     sdir, both = ctx.layout.secrets_dir(ld.name), (m, ld.manifest) if ld.manifest else (m,)
     keys = [k for x in both if x.app_env for k, key in x.app_env.keys.items() if key.secret]
     paths = [os.path.join(sdir, k) for x in both for k in x.secrets] + [os.path.join(sdir, "env", k) for k in keys]
@@ -162,7 +167,10 @@ def plan_prepare(ctx: Ctx, name: str, ref: str) -> Plan | None:
     if cand is not None:  # recorded (write-once), but its images are gone: pull the recorded digests again
         digests = cand.get("digests") or {}
         if lost := sorted(s for s in refs if not digests.get(s)):
-            msg = f"the images of the candidate of {src.commit} are gone; {', '.join(lost)} has no digest to pull again"
+            msg = (
+                f"the downloaded images for {src.commit} are no longer on this computer, and {', '.join(lost)} cannot "
+            )
+            msg += "be downloaded again as the exact same version; prepare another release instead"
             raise Refused(msg, code="stale-candidate")
         refs = {s: digests[s] for s in refs}
     tv = cx.values(ctx, ld, src.release, src.commit) | {f"param.{k}": v for k, v in env.items()}
@@ -191,13 +199,14 @@ def plan_deploy(ctx: Ctx, name: str, ref: str) -> Plan | None:
     foreign(ctx, name)
     spec, content, env = _env(ctx, ld, src)
     if (cand := _candidate(ctx, ld, src, _refs(ctx, ld, src, env))) is None or not _present(ctx, cand):
-        raise Refused(
-            f"no prepared candidate for {src.commit}", code="no-candidate", next=f"{brand.CLI} prepare {name} {ref}"
-        )
+        why = f"the app's images for {src.commit} are not ready on this computer (not downloaded yet, or no longer "
+        why += "present); run the prepare command first"
+        raise Refused(why, code="no-candidate", next=f"{brand.CLI} prepare {name} {ref}")
     found = _containers(ctx, name)
     if gone := sorted({s for s, _, _ in found} - set(cand["images"])):  # the identity check would fail on them
-        msg = f"{src.commit} has no service {', '.join(gone)}, which has containers here; removing a service"
-        raise Refused(msg + " is not in this release", code="removed-service")
+        msg = f"this version of the app no longer has the service {', '.join(gone)}, but that service still has "
+        msg += f"containers here; {brand.PRODUCT} cannot remove a service yet, so this update is refused"
+        raise Refused(msg, code="removed-service")
     kw: dict[str, Any] = {"export": src.export, "release": src.release, "commit": src.commit, "images": cand["images"]}
     cv, cmodel = cx.variant(ctx, ld, m, env=env, env_secrets=_env_secrets(spec), **kw)
     variants, steps, needs, models = {"candidate": cv}, list[Step](), dict[str, int](), [cmodel]
@@ -221,9 +230,8 @@ def plan_deploy(ctx: Ctx, name: str, ref: str) -> Plan | None:
         models.append(curmodel)
         writes = data_changing(m, cm, dep["images"], cand["images"])
         if writes and cm.stores and cm.backup.strategy == "none":
-            raise Refused(
-                "a writer's image changes; [backup] strategy none cannot preserve the data", code="cannot-preserve"
-            )
+            why = f"this update changes {words.WRITERS}, but the app declares no way to back its data up ([backup] "
+            raise Refused(why + "strategy none), so the data could not be saved first; refused", code="cannot-preserve")
         if writes and cm.backup.strategy == "tasks":
             needs |= _update(ctx, ld, src, cm, variants, (curmodel, cmodel), steps)
         elif not _config_only(ctx, ld, src, cv, spec, content, found, steps):
@@ -342,10 +350,10 @@ def _forward(ctx: Ctx, ld: Loaded, src: Source, cand: dict[str, Any]) -> dict[st
         entry, ok = state.read_doc(path, "catalog"), sb.levels(layout, name, found["bundle"], found["hash"])
         if entry["bundle_hash"] == found["hash"] and ok.get("verified"):
             return found | {"size": int(entry["size"])}
-    why = "only the candidate whose update froze it moves forward (its migrate task idempotent), on the pre-change"
-    msg = f"{name} is frozen: {why} bundle that update sealed and verified; otherwise the way back is the restore of"
-    msg += " a pre-change bundle (M2)"
-    raise Refused(msg, code="frozen", next=f"{brand.CLI} status {name}")
+    msg = f"{name} is frozen: an update stopped after it had started changing your data. Only the same version that "
+    msg += "froze it can continue, and only if its update made and checked a backup copy first and its migration step "
+    msg += "is safe to run again; otherwise the way back is to restore the backup copy made before the change, which "
+    raise Refused(msg + "is not in this release yet", code="frozen", next=f"{brand.CLI} status {name}")
 
 
 def _frozen_by(layout: state.Layout, name: str) -> tuple[Plan, dict[str, Any] | None] | None:
@@ -467,9 +475,9 @@ def _owner_gated(ld: Loaded, m: Manifest, cm: Manifest, content: bytes) -> None:
     old = cx.env_values(fs.read(old_file)) if keys and old_file else {}
     new = cx.env_values(content)
     if changed := sorted(k for k in keys if old.get(k) != new.get(k)):
-        raise Refused(
-            f"owner-gated app_env {', '.join(changed)} would change (class D, M2)", code="not-in-this-release"
-        )
+        why = f"the setting(s) {', '.join(changed)} may only be changed by the owner at a real terminal with a typed "
+        why += "challenge (class D), which is not in this release yet; put the previous value back"
+        raise Refused(why, code="not-in-this-release")
 
 
 def older(a: object, b: object) -> bool:
@@ -491,5 +499,6 @@ def _schema_gate(ctx: Ctx, ld: Loaded, commit: str) -> None:
     pairs = [d.get("pre_change_bundle") for d in docs if d.get("rollback_target") == target["seq"]]
     bundle = next((b for b in pairs if b), None)
     restore = f"{brand.CLI} restore {ld.name} --bundle {bundle} --reason <text>" if bundle else None
-    msg = f"code-only rollback impossible: {target['release']} expects schema {expected}, the data is at {actual}"
-    raise Refused(msg, code="schema-gate", next=restore)
+    msg = f"cannot go back to {target['release']} by changing only the code: it expects the data in layout (schema) "
+    msg += f"{expected}, but the data is already at {actual}; the way back is to restore the backup copy made before "
+    raise Refused(msg + "that change, which is not in this release yet", code="schema-gate", next=restore)

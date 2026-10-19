@@ -18,7 +18,7 @@ from ingat.adapters.runner import Redactor
 from ingat.core.executor import CLOSE, orphan_check
 from ingat.core.journal import Journal
 from ingat.core.steps import selftest_run
-from ingat.model import records
+from ingat.model import records, words
 from ingat.model.errors import CannotRun, IngatError, Refused
 from ingat.model.instance import validate_against
 from ingat.model.manifest import Manifest
@@ -41,10 +41,6 @@ CODES = (
 )  # fmt: skip
 LOG_TAIL = 500
 ONEOFF = "com.docker.compose.oneoff"  # set on `compose run` (task) containers
-UNCHECKED = {
-    "unreachable": "the daemon is unreachable",
-    "engine-mismatch": "the Docker engine ID differs from host.json",
-}
 _OP_DIR = re.compile(r"([1-9][0-9]*)-([a-z][a-z0-9-]*)")
 _SINCE = re.compile(r"[0-9][0-9A-Za-z:.+-]{0,39}")  # a `docker logs --since` timestamp or duration
 
@@ -74,14 +70,14 @@ def _host(ctx: Ctx) -> tuple[dict[str, Any], Found]:
     try:
         engine = state.read_doc(ctx.layout.host_json, "host").get("engine_id")
     except FileNotFoundError:
-        raise CannotRun("this host is not initialized", code="no-host", next=f"{brand.CLI} host init") from None
+        raise CannotRun(words.NOT_INITIALIZED, code="no-host", next=f"{brand.CLI} host init") from None
     paths = (ctx.layout.root, ctx.layout.backups, brand.PROBE_MOUNT)
     out: dict[str, Any] = {"daemon": "reachable", "gate_tier": None, "gate": []}
     out["free_bytes"] = {p: fs.statvfs(p)[1] for p in paths if fs.exists(p)}
     try:
         if ctx.info.get("ID") != engine:
             out["daemon"] = "engine-mismatch"
-            return out, {"engine-mismatch": [("the Docker engine ID differs from the one host.json records", None)]}
+            return out, {"engine-mismatch": [(f"{words.ENGINE_MISMATCH}; nothing runs until that is resolved", None)]}
         out["gate_tier"], out["gate"], nxt = _tier(ctx)
     except CannotRun as e:
         if e.code != "daemon-unreachable":
@@ -215,8 +211,8 @@ def _bundles(ctx: Ctx, name: str) -> list[dict[str, Any]]:
 
 def _level(b: dict[str, Any]) -> str:
     if b["failed"]:
-        return f"{', '.join(b['failed'])} failed"
-    return "restore-tested" if b["restore_tested_at"] else "verified" if b["verified_at"] else "unverified"
+        return f"a check failed ({', '.join(b['failed'])})"
+    return words.LEVELS["restore-tested" if b["restore_tested_at"] else "verified" if b["verified_at"] else None]
 
 
 def _ages(ctx: Ctx, ld: Loaded, rows: list[dict[str, Any]], busy: bool, flag: Flag) -> dict[str, Any]:
@@ -227,15 +223,18 @@ def _ages(ctx: Ctx, ld: Loaded, rows: list[dict[str, Any]], busy: bool, flag: Fl
     tested = max((b["restore_tested_at"] for b in rows if b["restore_tested_at"] and not b["failed"]), default=None)
     if ld.deployment is not None and ld.manifest is not None and ld.manifest.backup.strategy == "tasks":
         if not good or _hours(ctx, good[0]["created_at"]) > limits.max_age_hours:
-            why = f"newest verified bundle {good[0]['id']}" if good else "no verified bundle"
-            flag("backup-old", f"{why}; the limit is {limits.max_age_hours}h", f"{cli} backup {name}")
+            why = f"the newest checked backup copy, {good[0]['id']}, is too old" if good else ""
+            why = why or "there is no checked backup copy"
+            why += f"; a checked backup copy is expected at least every {limits.max_age_hours} hours"
+            flag("backup-old", why, f"{cli} backup {name}")
         if tested is None or _hours(ctx, tested) > 24 * limits.restore_test_max_age_days:
-            why = f"last restore-test {_age(ctx, tested)}; the limit is {limits.restore_test_max_age_days}d"
+            why = f"the last test restore was {_age(ctx, tested)}; one is expected at least every "
+            why += f"{limits.restore_test_max_age_days} days"
             flag("restore-test-old", why, f"{cli} verify {name} --latest --restore-test")
     for b in rows:  # only a newer record of the failed level clears it: a drill for a failed restore-test
         drill = " --restore-test" if "restore-tested" in b["failed"] else ""
         if b["failed"] or not (busy or b["verified_at"]):
-            flag("unverified-bundle", f"bundle {b['id']}: {_level(b)}", f"{cli} verify {name} {b['id']}{drill}")
+            flag("unverified-bundle", f"backup copy {b['id']}: {_level(b)}", f"{cli} verify {name} {b['id']}{drill}")
     out = {"count": len(rows), "newest": rows[0] if rows else None, "newest_verified": good[0] if good else None}
     return out | {"restore_tested": tested}
 
@@ -257,14 +256,13 @@ def _live(ctx: Ctx, ld: Loaded, check: bool, flag: Flag) -> list[dict[str, Any]]
     for c in ctx.docker.containers(project=name):
         labels = c["Config"].get("Labels") or {}
         if labels.get(own) != name:
-            why = f"container {c['Name'].lstrip('/')} is in project {name} but not labelled as its own"
-            flag("foreign", why, f"{brand.CLI} ps {name}")
+            flag("foreign", f"container {c['Name'].lstrip('/')} {words.foreign(name)}", f"{brand.CLI} ps {name}")
         elif labels.get(ONEOFF) != "True":
             by.setdefault(labels.get(cx.SERVICE, ""), []).append(c)
             rows.append(_row(c))
     for x in ctx.docker.networks({PROJECT_LABEL: name}):  # the override labels every network of the project
         if (x.get("Labels") or {}).get(own) != name:
-            flag("foreign", f"network {x['Name']} is in project {name} but not labelled as its own", None)
+            flag("foreign", f"Docker network {x['Name']} {words.foreign(name)}", None)
     services = [s for g in m.activate for s in g.services] if check and m else []
     running = ld.record.get("state") == "running"
     down = running and any(not c["State"].get("Running") for s in services for c in by.get(s, ()))
@@ -273,11 +271,17 @@ def _live(ctx: Ctx, ld: Loaded, check: bool, flag: Flag) -> list[dict[str, Any]]
         if not by.get(s):
             flag("changed-outside", f"service {s} has no container", restart)
         elif any(bool(c["State"].get("Running")) != running and not _asked(c, asked.get(s, ())) for c in by[s]):
-            why = "is not running" if running else "runs while the instance is stopped"
+            why = (
+                "is not running, although the app should be running"
+                if running
+                else "is running, although the app was stopped"
+            )
             flag("changed-outside", f"service {s} {why}", restart if running else f"{brand.CLI} stop {name}")
         for c in by.get(s, ()):
             if c["Image"] != dep["images"].get(s):
-                flag("changed-outside", f"service {s} runs {c['Image']}, not {dep['images'].get(s)}", restart)
+                why = f"service {s} is running a different image ({c['Image']}) than the one deployed "
+                why += f"({dep['images'].get(s)}); restart the app to put the deployed one back"
+                flag("changed-outside", why, restart)
     if not services or m is None:
         return rows
     snap = ctx.layout.deployment_snapshot(name, dep["seq"])
@@ -286,15 +290,17 @@ def _live(ctx: Ctx, ld: Loaded, check: bool, flag: Flag) -> list[dict[str, Any]]
     try:  # read-only: the deployment's own files and its content-addressed env file
         hashes, model = compose.config_hashes(p, services), compose.config(p)
     except IngatError as e:
-        flag("changed-outside", f"the recorded deployment does not render: {e.message}", f"{brand.CLI} doctor {name}")
+        why = f"the saved settings of the current deployment could not be read back: {e.message}"
+        flag("changed-outside", why, f"{brand.CLI} doctor {name}")
         return rows
     for s in services:
         if any((c["Config"].get("Labels") or {}).get(cx.CONFIG_HASH) != hashes.get(s) for c in by.get(s, ())):
-            flag("drift", f"service {s} differs from the configuration of deployment {dep['seq']}", restart)
+            why = f"service {s} is running with settings that differ from deployment {dep['seq']}; restart the app "
+            flag("drift", why + "to put the deployed settings back", restart)
     nets = {k for s in services for k in (model["services"].get(s, {}).get("networks") or {})}
     names = {x["name"] for k, x in (model.get("networks") or {}).items() if k in nets and x.get("name")}
     for n in sorted(names - {x["Name"] for x in ctx.docker.inspect("network", sorted(names))}):
-        flag("changed-outside", f"network {n} is missing", restart)
+        flag("changed-outside", f"Docker network {n} is missing; restart the app to recreate it", restart)
     return rows
 
 
@@ -310,22 +316,27 @@ def _instance(ctx: Ctx, ld: Loaded, host: dict[str, Any], shared: Found) -> tupl
     ops = _ops(ctx, name, live)
     for op in ops:  # a running one is at work: `attach` follows it
         if op["state"] != "running":
-            flag("open-operation", f"operation {op['seq']} ({op['kind']}) is {op['state']}", op["next"])
+            how = "is paused and waiting for you" if op["state"] == "paused" else "was interrupted before it finished"
+            flag("open-operation", f"operation {op['seq']} ({op['kind']}) {how}", op["next"])
     st, last = rec.get("state"), rec.get("last_op") or {}
     if st == "frozen":  # without a way forward: `history` tells why; the way back, a restore, arrives in M2
-        why = "the writers stay stopped after a failure past the forward point"
+        why = f"{words.FROZEN} until the way forward is taken"
         flag("frozen", why, way_forward(ctx.layout, name) or f"{cli} history {name}")
     if last.get("outcome") in ("failed-unchanged", "failed-frozen", "needs-review"):
         code = "needs-review" if last["outcome"] == "needs-review" else "last-op-failed"
-        flag(code, f"operation {last['seq']} ({last['kind']}) ended {last['outcome']}", _result_next(ctx, name, last))
+        why = f"operation {last['seq']} ({last['kind']}) {words.ENDED[last['outcome']]} ({last['outcome']})"
+        flag(code, why, _result_next(ctx, name, last))
     if rec.get("held_since"):
         clear = m.side_effects.clear_hold if m else None
-        flag("held", f"held since {rec['held_since']}", f"{cli} task {name} {clear}" if clear else None)
+        why = f"on hold since {rec['held_since']}: after its restore the app is holding its outgoing side effects "
+        why += "(for example sending mail) until the hold is cleared"
+        flag("held", why, f"{cli} task {name} {clear}" if clear else None)
     bundles = _ages(ctx, ld, _bundles(ctx, name), bool(ops), flag)
     check = dep is not None and not ops and st in ("running", "stopped")
     for store, n in (rec.get("generations") or {}).items() if check else ():
         if not fs.exists(ctx.layout.data_gen(name, store, f"g{n}")):
-            flag("changed-outside", f"generation g{n} of store {store} is missing", f"{cli} bundles {name}")
+            why = f"the data copy g{n} of store {store} is missing from disk; it was removed outside {brand.PRODUCT}"
+            flag("changed-outside", why, f"{cli} bundles {name}")
     data = {k: rec.get(k) for k in ("name", "app", "environment", "state", "held_since", "generations", "last_op")}
     keys = ("seq", "release", "commit", "origin", "created_at", "schema", "writes_reopened_at")
     data |= {"deployment": dep and {k: dep.get(k) for k in keys}, "operations": ops, "bundles": bundles}
@@ -347,18 +358,21 @@ def _lines(ctx: Ctx, data: dict[str, Any], host: dict[str, Any], found: Found) -
         s = o["last_step"]
         out.append(f"operation {o['seq']} ({o['kind']}): {o['state']}" + (f", step {s['n']} {s['type']}" if s else ""))
     newest, good = b["newest"], b["newest_verified"] or {}
-    text = f"bundles: {b['count']}" + (f", newest {newest['id']} ({_level(newest)})" if newest else "")
-    out.append(f"{text}, verified {_age(ctx, good.get('created_at'))}, restore-test {_age(ctx, b['restore_tested'])}")
+    text = f"backup copies: {b['count']}" + (f", newest {newest['id']} ({_level(newest)})" if newest else "")
+    text += f", newest checked copy made {_age(ctx, good.get('created_at'))}"
+    out.append(f"{text}, last test restore {_age(ctx, b['restore_tested'])}")
     for r in data["services"] or ():
         out.append(f"service {r['service']}: {r['state']}, health {r['health'] or '-'}, {r['restarts']} restarts")
     if data["services"] is None:
-        out.append(f"live data unavailable: the daemon is {host['daemon']}")
-    return out + [f"attention: {c}: {d}" for c in CODES for d, _ in found.get(c, ())]
+        why = f"live information was not read from Docker ({host['daemon']}: {words.UNCHECKED[host['daemon']]})"
+        out.append(f"{why}, so only the saved records are shown")
+    return out + [f"needs your attention ({c}): {d}" for c in CODES for d, _ in found.get(c, ())]
 
 
 def _host_lines(host: dict[str, Any]) -> list[str]:
     free = ", ".join(f"{p} {v / cx.GIB:.1f} GiB" for p, v in host["free_bytes"].items())
-    return [f"gate tier {host['gate_tier']}" + "".join(f"; {g}" for g in host["gate"]), f"free: {free}"]
+    tier = f"what may run on this computer: gate tier {host['gate_tier']} ({words.TIERS.get(host['gate_tier'], '')})"
+    return [tier + "".join(f"; {g}" for g in host["gate"]), f"free: {free}"]
 
 
 def status(ctx: Ctx, name: str | None) -> Report:
@@ -398,7 +412,7 @@ def doctor(ctx: Ctx, name: str) -> Report:
     app supports (LIFECYCLE §4.15). Exit 5 when status needs attention or a check failed."""
     rep, ld = status(ctx, name), cx.load(ctx, name)
     host, m, cfg, crash = rep["host"], ld.manifest, ctx.layout.docker_config, brand.env("CRASH_AT")
-    live, unchecked = host["daemon"] == "reachable", [f"not checked: {UNCHECKED.get(host['daemon'])}"]
+    live, unchecked = host["daemon"] == "reachable", [f"not checked: {words.UNCHECKED.get(host['daemon'])}"]
     checks: dict[str, list[str]] = {}
     if m is not None and ld.deployment is not None:
         checks["instance"] = validate_against(ld.inst, m)
@@ -407,8 +421,9 @@ def doctor(ctx: Ctx, name: str) -> Report:
     checks["secrets"] = _secret_files(ctx, ld)
     checks["collisions"] = _collisions(ctx, ld) if live else unchecked
     checks["roots"] = roots(ctx.layout)
-    checks["docker-config"] = [] if fs.exists(cfg) and not fs.listdir(cfg) else [f"{cfg} must be an empty directory"]
-    checks["crash-hook"] = [f"{crash} is set: a test-only hook that kills the executor"] if crash in os.environ else []
+    checks["docker-config"] = [] if fs.exists(cfg) and not fs.listdir(cfg) else [cx.docker_config_rule(cfg)]
+    hook = f"the environment variable {crash} is set: it exists only for tests and makes operations crash on purpose; "
+    checks["crash-hook"] = [hook + "unset it before running anything"] if crash in os.environ else []
     notes = _capabilities(m)
     lines = rep["lines"] + [f"{k}: {'; '.join(v) if v else 'ok'}" for k, v in checks.items()] + notes
     exit, code = (5, rep["code"] if rep["exit"] else "findings") if rep["exit"] or any(checks.values()) else (0, "ok")
@@ -432,7 +447,8 @@ def _secret_files(ctx: Ctx, ld: Loaded) -> list[str]:
     keys = m.app_env.keys if m and m.app_env else {}
     want |= {f"env/{k}": (0o600, x.required) for k, x in keys.items() if x.secret}
     have = [f for f in fs.listdir(sd) if f != "env"] + [f"env/{f}" for f in fs.listdir(os.path.join(sd, "env"))]
-    out = [f"{sd} must have mode 0700"] if fs.exists(sd) and stat.S_IMODE(os.lstat(sd).st_mode) != 0o700 else []
+    bad = fs.exists(sd) and stat.S_IMODE(os.lstat(sd).st_mode) != 0o700
+    out = [f"the secrets folder {sd} must be readable by its owner only (permissions 0700)"] if bad else []
     for rel in sorted({*want, *have}):
         mode, required = want.get(rel, (None, False))
         try:
@@ -441,11 +457,12 @@ def _secret_files(ctx: Ctx, ld: Loaded) -> list[str]:
             out += [f"{rel}: missing"] if required else []
             continue
         if not stat.S_ISREG(st.st_mode) or not st.st_size:
-            out.append(f"{rel}: not a regular non-empty file")
+            out.append(f"{rel}: must be a plain file with something in it (not empty, not a folder or link)")
         elif mode is None:  # before the first deploy no manifest says which files belong, nor their modes
-            out += [f"{rel}: not a secret of the deployed manifest"] if m else []
+            out += [f"{rel}: the deployed app uses no secret of this name (stray file)"] if m else []
         elif stat.S_IMODE(st.st_mode) != mode:
-            out.append(f"{rel}: mode {stat.S_IMODE(st.st_mode):04o}, the manifest says {mode:04o}")
+            found = stat.S_IMODE(st.st_mode)
+            out.append(f"{rel}: the file permissions are {found:04o} but must be {mode:04o}; fix them with chmod")
     return out
 
 
@@ -457,13 +474,14 @@ def _collisions(ctx: Ctx, ld: Loaded) -> list[str]:
     mine = {(kinds[k], v) for k, v in ((ld.deployment or {}).get("params") or {}).items() if k in kinds}
     mine |= {key for key, e in entries.items() if e.get("instance") == name and e.get("purpose") == "live"}
     other = {key: e.get("instance") for key, e in entries.items() if key in mine and e.get("instance") != name}
-    out = [f"{k} {v} is allocated to {i}" for (k, v), i in other.items()]
+    out = [f"{k} {v} is also reserved for the instance {i}" for (k, v), i in other.items()]
     ports = {v for k, v in mine if k == "port"}
     for c in ctx.docker.containers():
         if (c["Config"].get("Labels") or {}).get(own) != name:
             bound = (c["HostConfig"].get("PortBindings") or {}).values()
             published = {b.get("HostPort") for bs in bound for b in bs or ()}
-            out += [f"port {p} is published by container {c['Name'].lstrip('/')}" for p in sorted(ports & published)]
+            taken = f"is also assigned to another container, {c['Name'].lstrip('/')}"
+            out += [f"port {p} {taken}" for p in sorted(ports & published)]
     subnets = [ipaddress.ip_network(v, strict=False) for k, v in mine if k == "subnet"]
     for n in ctx.docker.networks() if subnets else ():
         if (n.get("Labels") or {}).get(own) != name:
@@ -476,11 +494,12 @@ def _collisions(ctx: Ctx, ld: Loaded) -> list[str]:
 
 def _capabilities(m: Manifest | None) -> list[str]:
     if m is None:
-        return ["capabilities: known once deployed"]
+        return ["what this app supports (backup, restore): known after its first deploy"]
     if m.backup.strategy == "none":
-        return ["backup, verify, drill and restore: not applicable ([backup] strategy none)"]
+        return ["backup, check, test restore and restore: not needed, this app keeps no data ([backup] strategy none)"]
     online = all(s.online_backup for s in m.stores.values())
-    return [f"backup: {'online' if online else 'with the writers stopped'}", "restore: not in this release"]
+    how = "while the app keeps running" if online else f"with {words.WRITERS} stopped for the whole backup"
+    return [f"backup: {how}", "restore: not available in this release yet"]
 
 
 def list_(ctx: Ctx) -> Report:
@@ -512,11 +531,13 @@ def logs(ctx: Ctx, name: str, service: str, since: str | None = None) -> Report:
     """The last LOG_TAIL lines of the service's containers, redacted with the instance's secret values."""
     cx.load(ctx, name)
     if since is not None and not _SINCE.fullmatch(since):
-        raise CannotRun(f"--since {since!r} is not a timestamp or a duration", code="usage")
+        why = f"--since {since!r} is not a time (for example 2026-10-16T08:00:00) or a duration (for example 30m or 2h)"
+        raise CannotRun(why, code="usage")
     labels = {brand.label("instance"): name, cx.SERVICE: service}
     found = [c for c in ctx.docker.containers(labels, project=name) if c["Config"]["Labels"].get(ONEOFF) != "True"]
     if not found:
-        raise Refused(f"{name} has no container of service {service}", code="no-container")
+        why = f"{name} has no container for a service named {service!r}; check the service name"
+        raise Refused(why, code="no-container", next=f"{brand.CLI} ps {name}")
     docker = Docker(config_dir=ctx.layout.docker_config, redactor=Redactor(_secrets(ctx, name)))
     out, lines = [], []
     for c in sorted(found, key=lambda c: str(c["Name"])):
@@ -548,7 +569,10 @@ def bundles(ctx: Ctx, name: str) -> Report:
     """Catalogued bundles minus tombstones, newest first, with their verification level and age."""
     cx.load(ctx, name)
     rows = _bundles(ctx, name)
-    lines = [f"{b['id']}: {b['class']}, {b['size']} bytes, {_age(ctx, b['created_at'])}, {_level(b)}" for b in rows]
+    lines = []
+    for b in rows:
+        size = f"{b['size'] / (1 << 20):.1f} MiB" if b["size"] is not None else "size unknown"
+        lines.append(f"{b['id']}: {b['class']} backup copy, {size}, made {_age(ctx, b['created_at'])}, {_level(b)}")
     return _report(lines or ["no bundles"], bundles=rows)
 
 
@@ -562,7 +586,10 @@ def scheduled_status(ctx: Ctx) -> Report:
     old: dict[str, list[str]] = state.read_doc(path, "attention").get("codes") or {} if fs.exists(path) else {}
     if now == old:
         return _report([], code="unchanged", codes=now)
-    lines = [f"new: {n} {c}" for n, codes in now.items() for c in codes if c not in old.get(n, ())]
-    lines += [f"cleared: {n} {c}" for n, codes in old.items() for c in codes if c not in now.get(n, ())]
+    new = [(n, c) for n, codes in now.items() for c in codes if c not in old.get(n, ())]
+    gone = [(n, c) for n, codes in old.items() for c in codes if c not in now.get(n, ())]
+    lines = [f"now needs attention: {n}: {c}" for n, c in new] + [
+        f"no longer needs attention: {n}: {c}" for n, c in gone
+    ]
     state.replace_doc(path, records.new_doc("attention", codes=now, at=records.iso(ctx.now)))
     return _report(lines, 5, "changed", f"{brand.CLI} status" if now else None, codes=now)

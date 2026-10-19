@@ -33,11 +33,13 @@ def plan_backup(ctx: Ctx, name: str, klass: str, reason: str | None, prune: bool
     up online and the class allows it; retention follows when `prune` or `scheduled` (LIFECYCLE §4.7)."""
     klass = "scheduled" if scheduled else klass
     if klass not in CLASSES or set(reason or "") & set("\0\n\r"):
-        raise CannotRun(f"the class must be one of {', '.join(CLASSES)}; --reason one line", code="usage")
+        why = f"--class must be one of {', '.join(CLASSES)}, and --reason must be a single line of text"
+        raise CannotRun(why, code="usage")
     ld = _load(ctx, name)
     m, dep = _deployed(ld)
     if ld.record.get("state") == "frozen":  # the recorded release's tasks would capture, and restart, other data
-        msg = f"{name} is frozen: its data may be past the forward point of the update that froze it"
+        msg = f"{name} is frozen: an operation stopped after it had started changing the data, so a backup now might "
+        msg += "copy half-changed data; refused while the app is frozen"
         raise Refused(msg, code="frozen", next=way_forward(ctx.layout, name) or f"{brand.CLI} status {name}")
     online = klass in ("scheduled", "manual") and all(s.online_backup for s in m.stores.values())
     warnings = cx.gate(ctx, TIER1 if online else TIER2, name)
@@ -63,7 +65,7 @@ def plan_backup(ctx: Ctx, name: str, klass: str, reason: str | None, prune: bool
         except (CannotRun, Refused) as e:  # the nightly backup goes on and keeps every bundle: until the build is
             if not scheduled or (isinstance(e, Refused) and e.code != "clock"):  # certified, or the clock passes
                 raise
-            warnings.append(f"retention skipped: {e.message}")
+            warnings.append(f"old backup copies were not cleaned up this time: {e.message}")
             cat = {}
         else:
             steps += _deletes(cat, delete)
@@ -80,7 +82,7 @@ def plan_verify(
 ) -> Plan:
     """Re-hash a sealed bundle against its catalog entry and run the verify tasks (LIFECYCLE §4.8), or drill it."""
     if latest == (bundle is not None):
-        raise CannotRun("name one bundle or --latest", code="usage")
+        raise CannotRun("say which backup copy to check: give its id, or --latest for the newest one", code="usage")
     ld = _load(ctx, name)
     bid, entry = _pick(ctx, ld, bundle)
     command = [brand.CLI, *(["scheduled"] if scheduled else []), "verify", name, bid]
@@ -134,7 +136,8 @@ def _drill(ctx: Ctx, ld: Loaded, bid: str, entry: dict[str, Any], command: list[
     m, dep = _recorded(ctx, ld, bid, entry)
     _images(ctx, dep)
     if m.drill.min_free_memory > (free := _memory() if m.drill.min_free_memory else 0):
-        raise Refused(f"{free} bytes of memory available; the drill needs {m.drill.min_free_memory}", code="memory")
+        why = f"only {free} bytes of memory are free, but a test restore of this app needs {m.drill.min_free_memory}; "
+        raise Refused(why + "free some memory or try again later", code="memory")
     _exported(name, dep)
     cx.capacity(ctx, {layout.root: 3 * int(entry["size"])})  # the input copy plus twice the restored store
     seq = state.next_seq(layout, name)
@@ -196,14 +199,15 @@ def _load(ctx: Ctx, name: str) -> Loaded:
 
 def _deployed(ld: Loaded) -> tuple[Manifest, dict[str, Any]]:
     if ld.manifest is None or ld.deployment is None:
-        raise Refused(f"{ld.name} has no deployment", code="wrong-state")
+        raise Refused(f"{ld.name} has not been deployed yet", code="wrong-state")
     return ld.manifest, ld.deployment
 
 
 def _exported(name: str, dep: dict[str, Any]) -> None:
     if not fs.exists(dep["export"]):
         nxt = f"{brand.CLI} prepare {name} {dep['release']}"  # exports that commit again
-        raise Refused(f"the project directory of {dep['release']} is missing", code="missing-export", next=nxt)
+        why = f"the app's files for release {dep['release']} are missing from this computer; run prepare again to "
+        raise Refused(why + "fetch them", code="missing-export", next=nxt)
 
 
 def _recorded(ctx: Ctx, ld: Loaded, bid: str, entry: dict[str, Any]) -> tuple[Manifest, dict[str, Any]]:
@@ -220,7 +224,8 @@ def _recorded(ctx: Ctx, ld: Loaded, bid: str, entry: dict[str, Any]) -> tuple[Ma
 def _images(ctx: Ctx, dep: dict[str, Any]) -> None:
     ids = sorted(set(dep["images"].values()))
     if len(ctx.docker.inspect("image", ids)) != len(ids):  # `prepare` rebuilds removed images from M3
-        raise Refused(f"images of release {dep['release']} are no longer present", code="missing-image")
+        why = f"the images of release {dep['release']} are no longer on this computer, so this cannot run; downloading "
+        raise Refused(why + "them again arrives in a later release", code="missing-image")
 
 
 def _variant(
@@ -244,11 +249,13 @@ def _writers(ctx: Ctx, ld: Loaded, m: Manifest) -> list[str]:
         found[service] = found.get(service, False) or up
     live = [w for w in m.services.writers if found.get(w)]
     if state_ != "running" and live:
-        why = f"writer service {live[0]} runs while {ld.name} is {state_}"
-        raise Refused(why, code="changed-outside", next=f"{brand.CLI} stop {ld.name}")
+        why = f"the service {live[0]}, which changes your data, is running although {ld.name} is marked {state_}; "
+        raise Refused(why + "stop the app first", code="changed-outside", next=f"{brand.CLI} stop {ld.name}")
     if state_ == "running" and (gone := [w for w in m.services.writers if w not in found]):
-        why = f"writer service {gone[0]} has no container while {ld.name} is running"
-        raise Refused(why, code="changed-outside", next=f"{brand.CLI} restart {ld.name}")
+        why = f"the service {gone[0]}, which changes your data, has no container although {ld.name} is marked "
+        raise Refused(
+            why + "running; restart the app first", code="changed-outside", next=f"{brand.CLI} restart {ld.name}"
+        )
     return live
 
 
@@ -281,9 +288,11 @@ def _bundle_json(ctx: Ctx, name: str, bid: str, entry: dict[str, Any]) -> Any:
     try:
         sums, data = fs.read(os.path.join(d, "SHA256SUMS")), fs.read(os.path.join(d, "bundle.json"))
     except FileNotFoundError:
-        raise Refused(f"bundle {bid} is missing from {ctx.layout.backups}", code="bundle-missing") from None
+        why = f"the files of backup copy {bid} are missing from {ctx.layout.backups}"
+        raise Refused(why, code="bundle-missing") from None
     if bundle_hash(sums) != entry["bundle_hash"] or parse_sums(sums).get("bundle.json") != records.sha256_hex(data):
-        raise Refused(f"bundle {bid} does not match its catalog entry", code="bundle-hash")
+        why = f"the files of backup copy {bid} have changed since it was made (they no longer match its record), so "
+        raise Refused(why + "it cannot be trusted", code="bundle-hash")
     return records.loads(data)
 
 

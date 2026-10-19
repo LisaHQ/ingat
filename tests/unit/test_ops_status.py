@@ -27,6 +27,10 @@ from ingat.store.state import Layout
 REPO = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 CLI, NAME, IMAGE = brand.CLI, "lite", "sha256:" + "1" * 64
+DOWN = "service app is not running, although the app should be running"
+FOREIGN = "sits in this app's Docker project but does not belong to this instance"
+FOREIGN = f"{FOREIGN} ({brand.PRODUCT} did not create it for {NAME}); it is left untouched"
+NOT_A_FILE = "must be a plain file with something in it (not empty, not a folder or link)"
 INSTANCE = """instance = 1
 name = "lite"
 app = "fx-lite"
@@ -174,7 +178,10 @@ class StatusTest(unittest.TestCase):
     def test_registered_and_deployed_instances_are_clean(self) -> None:
         rep = self.status()
         self.assertEqual((rep["exit"], rep["code"], rep["next"], rep["attention"]), (0, "ok", None, {}))
-        self.assertEqual(rep["lines"][:2], ["lite: registered", "bundles: 0, verified never, restore-test never"])
+        self.assertEqual(
+            rep["lines"][:2],
+            ["lite: registered", "backup copies: 0, newest checked copy made never, last test restore never"],
+        )
         self.deploy()
         rep = self.status()
         self.assertEqual((rep["exit"], rep["attention"]), (0, {}), rep["lines"])
@@ -193,12 +200,16 @@ class StatusTest(unittest.TestCase):
         self.bundle("b2", ago(hours=30), verified=True)
         self.bundle("b3", ago(days=9), restore_tested=True)
         rep = self.status()
-        self.assertEqual(rep["attention"]["backup-old"], ["newest verified bundle b2; the limit is 26h"])
-        self.assertEqual(rep["attention"]["restore-test-old"], ["last restore-test 9d ago; the limit is 8d"])
+        old = (
+            "the newest checked backup copy, b2, is too old; a checked backup copy is expected at least every 26 hours"
+        )
+        self.assertEqual(rep["attention"]["backup-old"], [old])
+        tested = "the last test restore was 9d ago; one is expected at least every 8 days"
+        self.assertEqual(rep["attention"]["restore-test-old"], [tested])
         self.bundle("b4", ago(hours=1), verified=True, restore_tested=False)  # a failed drill counts against b4
         rep = self.status()
         self.assertEqual(sorted(rep["attention"]), ["backup-old", "restore-test-old", "unverified-bundle"])
-        self.assertEqual(rep["attention"]["unverified-bundle"], ["bundle b4: restore-tested failed"])
+        self.assertEqual(rep["attention"]["unverified-bundle"], ["backup copy b4: a check failed (restore-tested)"])
         self.bundle("b5", ago(hours=1), verified=True)
         self.assertEqual(self.codes(), ["restore-test-old", "unverified-bundle"])
 
@@ -207,7 +218,10 @@ class StatusTest(unittest.TestCase):
         self.bundle("b2", ago(hours=1), verified=False)
         self.bundle("b3", ago(hours=2))
         rep = self.status()
-        self.assertEqual(rep["attention"]["unverified-bundle"], ["bundle b2: verified failed", "bundle b3: unverified"])
+        self.assertEqual(
+            rep["attention"]["unverified-bundle"],
+            ["backup copy b2: a check failed (verified)", "backup copy b3: not checked yet"],
+        )
         self.assertEqual(rep["next"], f"{CLI} verify {NAME} b2")
         state.write_doc_once(self.lay.catalog(NAME, "b2.pruned"), records.new_doc("tombstone", bundle_id="b2"))
         self.assertEqual([b["id"] for b in st.bundles(self.ctx, NAME)["bundles"]], ["b3", "b1"])
@@ -233,7 +247,7 @@ class StatusTest(unittest.TestCase):
         self.deploy()
         self.bundle("b2", ago(hours=1), verified=True, restore_tested=False)
         rep = self.status()
-        self.assertEqual(rep["attention"]["unverified-bundle"], ["bundle b2: restore-tested failed"])
+        self.assertEqual(rep["attention"]["unverified-bundle"], ["backup copy b2: a check failed (restore-tested)"])
         self.assertEqual(rep["next"], f"{CLI} verify {NAME} b2 --restore-test")  # a plain verify cannot clear it
         self.bundle("b3.pruned", ago(hours=2), verified=True)  # a bundle id may end in .pruned (bundle.ID_RE)
         self.assertEqual([b["id"] for b in st.bundles(self.ctx, NAME)["bundles"]], ["b2", "b3.pruned", "b1"])
@@ -252,11 +266,13 @@ class StatusTest(unittest.TestCase):
         j.close_step(1, "done")
         j.intent(2, 1)
         rep = self.status()
-        self.assertEqual(rep["attention"], {"open-operation": ["operation 2 (deploy) is paused"]})
+        self.assertEqual(rep["attention"], {"open-operation": ["operation 2 (deploy) is paused and waiting for you"]})
         self.assertEqual(rep["instance"]["operations"][0]["last_step"]["type"], "Pause")
         self.assertEqual(rep["next"], f"{CLI} resume {NAME}")
         os.remove(f"{d}/plan.json")
-        self.assertEqual(self.status()["attention"]["open-operation"], ["operation 2 (deploy) is interrupted"])
+        self.assertEqual(
+            self.status()["attention"]["open-operation"], ["operation 2 (deploy) was interrupted before it finished"]
+        )
         self.assertEqual(st.history(self.ctx, NAME)["operations"][0]["state"], "interrupted")
         executor = {brand.label("role"): "exec", brand.label("instance"): NAME}  # as the CLI launches it
         self.docker.box.append(container(brand.executor_name(NAME), executor))
@@ -307,7 +323,8 @@ class StatusTest(unittest.TestCase):
         self.register(name)
         os.makedirs(self.lay.op_dir(name, 1, "deploy"))
         self.assertEqual(
-            st.status(self.ctx, name)["attention"], {"open-operation": ["operation 1 (deploy) is interrupted"]}
+            st.status(self.ctx, name)["attention"],
+            {"open-operation": ["operation 1 (deploy) was interrupted before it finished"]},
         )
         marker = records.new_doc(SELFTEST_KIND, run_id="r1", instance=name, at=ago(minutes=1))
         state.write_doc_once(self.lay.inst(name, SELFTEST_MARKER), marker)  # selftest made it: its executor runs it
@@ -356,7 +373,7 @@ class StatusTest(unittest.TestCase):
         rep = self.status()
         self.assertEqual((rep["exit"], rep["instance"]["services"][0]["state"]), (0, "exited"), rep["lines"])
         app["State"]["FinishedAt"] = ago(minutes=5)[:-1] + ".1Z"  # started and stopped again outside
-        self.assertEqual(self.status()["attention"], {"changed-outside": ["service app is not running"]})
+        self.assertEqual(self.status()["attention"], {"changed-outside": [DOWN]})
         app["State"]["FinishedAt"] = ago(minutes=9, seconds=30)[:-1] + ".1Z"
         self.assertEqual(self.status()["exit"], 0)
         os.rename(d, self.lay.op_dir(NAME, 2, "restart"))
@@ -411,7 +428,7 @@ class StatusTest(unittest.TestCase):
         app = self.docker.box[0]
         app["State"] = {"Status": "exited", "Running": False}
         rep = self.status()
-        self.assertEqual((rep["attention"], rep["next"]), ({"changed-outside": ["service app is not running"]},
+        self.assertEqual((rep["attention"], rep["next"]), ({"changed-outside": [DOWN]},
                                                            f"{CLI} restart {NAME}"))  # fmt: skip
         self.update(state="stopped")
         self.assertEqual(self.status()["exit"], 0)
@@ -423,19 +440,23 @@ class StatusTest(unittest.TestCase):
         rep = self.status()
         self.assertEqual(
             rep["attention"]["foreign"],
-            ["container intruder is in project lite but not labelled as its own",
-             "network lite_default is in project lite but not labelled as its own"],
+            [f"container intruder {FOREIGN}", f"Docker network lite_default {FOREIGN}"],
         )  # fmt: skip
         self.docker.nets.clear()
         rep = self.status()
         self.assertEqual(sorted(rep["attention"]), ["changed-outside", "drift", "foreign"])
         self.assertEqual(
             rep["attention"]["changed-outside"],
-            [f"service app runs sha256:{'2' * 64}, not {IMAGE}", "network lite_default is missing"],
+            [
+                f"service app is running a different image (sha256:{'2' * 64}) than the one deployed ({IMAGE}); "
+                "restart the app to put the deployed one back",
+                "Docker network lite_default is missing; restart the app to recreate it",
+            ],
         )
         os.rmdir(self.lay.data_gen(NAME, "data", "g1"))
         rep = self.status()
-        self.assertEqual(rep["attention"]["changed-outside"][0], "generation g1 of store data is missing")
+        gone = f"the data copy g1 of store data is missing from disk; it was removed outside {brand.PRODUCT}"
+        self.assertEqual(rep["attention"]["changed-outside"][0], gone)
         self.assertEqual(rep["next"], f"{CLI} bundles {NAME}")
         names = [r["name"] for r in st.ps(self.ctx, NAME)["containers"] if not r["owned"]]
         self.assertEqual(names, ["intruder"])
@@ -444,7 +465,9 @@ class StatusTest(unittest.TestCase):
         self.deploy()
         self.update(state="stopped")
         rep = self.status()
-        self.assertEqual(rep["attention"], {"changed-outside": ["service app runs while the instance is stopped"]})
+        self.assertEqual(
+            rep["attention"], {"changed-outside": ["service app is running, although the app was stopped"]}
+        )
         self.assertEqual((rep["exit"], rep["next"]), (5, f"{CLI} stop {NAME}"))
 
     def test_daemon_unreachable_engine_mismatch_and_uncertified(self) -> None:
@@ -488,11 +511,17 @@ class StatusTest(unittest.TestCase):
         rep = st.doctor(self.ctx, NAME)
         self.assertEqual((rep["exit"], {k: v for k, v in rep["checks"].items() if v}), (0, {}), rep["lines"])
         Path(self.lay.secrets_dir(NAME), "empty").write_text("")
-        self.assertEqual(st.doctor(self.ctx, NAME)["checks"]["secrets"], ["empty: not a regular non-empty file"])
+        self.assertEqual(st.doctor(self.ctx, NAME)["checks"]["secrets"], [f"empty: {NOT_A_FILE}"])
         self.docker.engine = "E2"
         del self.ctx.info  # the context caches what the daemon reported
         rep = st.doctor(self.ctx, NAME)
-        self.assertEqual(rep["checks"]["gate"], ["not checked: the Docker engine ID differs from host.json"])
+        self.assertEqual(
+            rep["checks"]["gate"],
+            [
+                f"not checked: this is a different Docker engine than the one this {brand.PRODUCT} folder was set up "
+                "with"
+            ],
+        )
 
     def test_scheduled_status_reports_changes_once(self) -> None:
         self.deploy()
@@ -502,14 +531,17 @@ class StatusTest(unittest.TestCase):
         self.assertEqual(tree(self.lay.root), before)
         os.remove(self.lay.catalog(NAME, "b1"))
         rep = st.scheduled_status(self.ctx)
-        self.assertEqual((rep["exit"], rep["lines"]), (5, [f"new: {NAME} backup-old", f"new: {NAME} restore-test-old"]))
+        self.assertEqual(
+            (rep["exit"], rep["lines"]),
+            (5, [f"now needs attention: {NAME}: backup-old", f"now needs attention: {NAME}: restore-test-old"]),
+        )
         written = tree(self.lay.root)
         self.assertEqual(set(written) - set(before) | {self.lay.attention_json}, {self.lay.attention_json})
         self.assertEqual(state.read_doc(self.lay.attention_json, "attention")["codes"], {NAME: rep["codes"][NAME]})
         self.assertEqual((st.scheduled_status(self.ctx)["exit"], tree(self.lay.root)), (0, written))
         self.bundle("b2", ago(hours=1), verified=True, restore_tested=True)
         rep = st.scheduled_status(self.ctx)
-        self.assertEqual((rep["exit"], rep["lines"][0]), (5, f"cleared: {NAME} backup-old"))
+        self.assertEqual((rep["exit"], rep["lines"][0]), (5, f"no longer needs attention: {NAME}: backup-old"))
         self.assertEqual(st.scheduled_status(self.ctx)["exit"], 0)
 
     def test_diagnostics_write_nothing(self) -> None:
@@ -560,7 +592,7 @@ class StatusTest(unittest.TestCase):
         with mock.patch.object(cx, "current"):
             rep = st.doctor(self.ctx, NAME)
         self.assertEqual((rep["exit"], {k: v for k, v in rep["checks"].items() if v}), (0, {}), rep["lines"])
-        self.assertIn("backup: online", rep["notes"])
+        self.assertIn("backup: while the app keeps running", rep["notes"])
         secret = Path(self.lay.secrets_dir(NAME), "env", "MAIL_PASSWORD")
         secret.write_text("x" * 32)
         secret.chmod(0o644)
@@ -578,11 +610,18 @@ class StatusTest(unittest.TestCase):
         self.assertEqual((rep["exit"], rep["code"]), (5, "findings"))
         self.assertEqual(
             checks["secrets"],
-            ["env/MAIL_PASSWORD: mode 0644, the manifest says 0600", "stray: not a regular non-empty file"],
+            [
+                "env/MAIL_PASSWORD: the file permissions are 0644 but must be 0600; fix them with chmod",
+                f"stray: {NOT_A_FILE}",
+            ],
         )
         self.assertEqual(checks["policy"][1], "services.app.x")
         self.assertEqual(
-            checks["collisions"], ["port 20001 is allocated to other", "port 20001 is published by container web"]
+            checks["collisions"],
+            [
+                "port 20001 is also reserved for the instance other",
+                "port 20001 is also assigned to another container, web",
+            ],
         )
         self.assertEqual(sorted(checks), ["collisions", "crash-hook", "docker-config", "policy", "secrets"])
 

@@ -44,7 +44,7 @@ def request(
         return resp.status, out, data
     except (OSError, ValueError, http.client.HTTPException) as e:
         why = f"no complete response within {timeout}s" if expired.is_set() else e
-        raise Failed(f"http probe {method} 127.0.0.1:{port}{path}: {why}", code="probe") from e
+        raise Failed(f"The web check {method} {path} on port {port} did not answer: {why}", code="probe") from e
     finally:
         timer.cancel()
         conn.close()

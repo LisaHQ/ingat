@@ -9,15 +9,15 @@ set -eu
 ROOT=/srv/ingat BACKUPS=/srv/ingat-backups
 while [ $# -gt 0 ]; do
   case "$1" in
-    --root) ROOT=${2:?}; shift 2 ;;
-    --backups) BACKUPS=${2:?}; shift 2 ;;
-    *) echo "usage: sh facts.sh [--root DIR] [--backups DIR]" >&2; exit 2 ;;
+    --root) [ $# -ge 2 ] && [ -n "$2" ] || { echo "facts: --root needs a folder path, for example --root /srv/ingat" >&2; exit 2; }; ROOT=$2; shift 2 ;;
+    --backups) [ $# -ge 2 ] && [ -n "$2" ] || { echo "facts: --backups needs a folder path, for example --backups /srv/ingat-backups" >&2; exit 2; }; BACKUPS=$2; shift 2 ;;
+    *) echo "facts: unknown option $1. Use: sh facts.sh [--root DIR] [--backups DIR] > facts.json (DIR is the folder you gave install.sh, if you changed the default)" >&2; exit 2 ;;
   esac
 done
-DOCKER=$(command -v docker) || { echo "facts: docker not found in PATH" >&2; exit 2; }
+DOCKER=$(command -v docker) || { echo "facts: Docker is not installed on this machine, or the docker command cannot be found from this root shell. If Docker is already installed, open a root shell with sudo -i and run this script from there; if not, install Docker Engine 24.0 or later, then run this script again" >&2; exit 2; }
 # The local socket only (ARCHITECTURE.md §9.7): DOCKER_HOST or a CLI context never points the facts at another daemon.
 dk() { "$DOCKER" -H unix:///var/run/docker.sock "$@"; }
-dk info >/dev/null 2>&1 || { echo "facts: the local Docker daemon is not reachable (run as root)" >&2; exit 2; }
+dk info >/dev/null 2>&1 || { echo "facts: cannot talk to Docker on this machine. Check that Docker is running, and run this script as the root user (type sudo -i, press Enter, then run the same command again)" >&2; exit 2; }
 
 # A JSON string of $1 without control characters, or null when $1 is empty.
 str() {

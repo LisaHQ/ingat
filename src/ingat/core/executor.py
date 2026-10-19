@@ -15,13 +15,19 @@ from ingat.adapters.docker import Docker, EffectToken
 from ingat.core import approval, opening, probes, steps, tasks
 from ingat.core.plan import PROJECT_LABEL, Plan, Step, fingerprint
 from ingat.core.steps import Cancelled, Op
-from ingat.model import records
+from ingat.model import records, words
 from ingat.model.errors import CannotRun, IngatError, NeedsAttention, Refused
 from ingat.store import fs, state
 from ingat.store.locks import Lock
 
 AUTO_ABANDON = ("prepare", "backup", "verify", "drill")  # operations without a forward step (LIFECYCLE §3.4)
 CLOSE = 0  # journal step of the close decision, written before the close acts on it
+_UNEXPECTED = (
+    f"{brand.PRODUCT} ran into an unexpected problem and stopped. It did not continue past that point. Run "
+    f"`{brand.CLI} status <instance>` to see where the operation stands and whether it must be resumed or abandoned."
+)
+_CANCELLED_EARLY = "Cancelled at your request. Nothing had been changed yet."
+_CANCELLED = "Stopped at your request. The result's outcome and warnings say what this left behind."
 SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT)
 
 _STEPS: dict[str, Callable[[Op, Step, EffectToken], dict[str, Any]]] = {
@@ -65,7 +71,7 @@ def execute(
         except IngatError as e:
             res = Res(e.exit_code, e.code, e.message, None, e.next)
         except BaseException:
-            res = Res(4, "executor-error", "the executor stopped on an unexpected error", None, None)
+            res = Res(4, "executor-error", _UNEXPECTED, None, None)
             _run_file(layout, run_id, res, warned)
             raise
     _run_file(layout, run_id, res, warned)
@@ -109,26 +115,48 @@ def _run_file(layout: state.Layout, run_id: str, res: Res, warned: list[str]) ->
 def _run(layout: state.Layout, docker: Docker, compose: Compose, plan: Plan, mode: str, fg: bool, tty: bool) -> Res:
     name = plan.instance
     if not name or not fs.exists(layout.record_json(name)):
-        raise Refused(f"instance {name} is not initialized", code="unknown-instance")
+        why = (
+            f"There is no installed app (instance) named {name} on this computer yet. Check the spelling, or set it "
+            f"up first with `{brand.CLI} init`. Nothing was changed."
+        )
+        raise Refused(why, code="unknown-instance")
     later = sorted({s.type for s in plan.steps} - {*_STEPS, "Pause"})
     if later:
-        raise Refused(f"{', '.join(later)} steps are not in this release", code="not-in-this-release")
+        why = (
+            f"This plan needs steps that this version of {brand.PRODUCT} cannot run yet ({', '.join(later)}). Nothing "
+            f"was changed. A newer release may support them; update {brand.PRODUCT} first, then plan again."
+        )
+        raise Refused(why, code="not-in-this-release")
     holder = {"op": plan.op_kind, "command": plan.command, "operator": os.environ.get(brand.env("OPERATOR"), "")}
     with Lock(layout.lock(name), holder):
         host = state.read_doc(layout.host_json, "host")
         if docker.info()["ID"] != host["engine_id"]:
-            raise CannotRun("the Docker daemon is not the one host.json records", code="engine-mismatch")
+            why = (
+                f"{words.ENGINE_MISMATCH}. Nothing was changed. Check that you are on the right computer and that "
+                "Docker was not reinstalled or replaced."
+            )
+            raise CannotRun(why, code="engine-mismatch")
         opened = state.open_ops(layout, name)
         old = opening.load(layout, docker, compose, name, *opened[-1], fg, tty) if opened else None
         if mode != "new" and old is None:
-            raise Refused(f"{name} has no open operation", code="wrong-state")
+            why = f"There is nothing to resume or abandon on {name}: it has no unfinished operation."
+            raise Refused(why, code="wrong-state")
         join = mode == "new" and old is not None and opening.joinable(old, plan)
         if mode == "new" and old is not None and not join and old.plan.op_kind not in AUTO_ABANDON:
             nxt = f"{brand.CLI} resume {name}  or  {brand.CLI} abandon {name}"
-            raise CannotRun(f"operation {old.seq} ({old.plan.op_kind}) is open", code="open-operation", next=nxt)
+            why = (
+                f"{name} still has an unfinished operation (number {old.seq}, a {old.plan.op_kind}). Finish it first: "
+                "resume it to carry on, or abandon it to undo what it did where that is possible."
+            )
+            raise CannotRun(why, code="open-operation", next=nxt)
         orphans = orphan_check(docker, name, old.seq) if old else []
         if plan.fingerprint != fingerprint(layout, docker, name, plan.fingerprint.get("bundles", {})):
-            return Res(1, "stale-plan", f"{name} changed since this plan was made; plan again", None, None)
+            why = (
+                f"{name} changed after this plan was made (its recorded state, its containers or its backup copies "
+                "are not as the plan expected, for example because another command ran in between), so this plan is "
+                "no longer safe to run. Nothing was changed. Run the command again to make a fresh plan."
+            )
+            return Res(1, "stale-plan", why, None, None)
         live = (old.plan if old and mode == "resume" else plan).inputs.get("app_env")
         need = mode == "new" or (mode == "resume" and live is not None and not fs.exists(live["path"]))
         env = opening.app_env(layout, name, live) if need else None  # a resume writes the op's own file if missing
@@ -136,7 +164,7 @@ def _run(layout: state.Layout, docker: Docker, compose: Compose, plan: Plan, mod
         for v in plan.inputs.get("variants", {}).values():  # an env value Compose cannot read refuses before effects
             steps.env_text(v["env"])
         if opening.SIGNALLED[0]:
-            return Res(130, "cancelled", "cancelled before any effect", None, None)
+            return Res(130, "cancelled", _CANCELLED_EARLY, None, None)
         if old:  # effects from here on
             _bury(old, orphans)
         if mode == "resume" and old:
@@ -147,7 +175,11 @@ def _run(layout: state.Layout, docker: Docker, compose: Compose, plan: Plan, mod
         if join and old:
             return _steps(opening.join(old, plan, env, values, fg, tty), 0)
         if old and _abandon(old, "abandoned-auto").outcome == "needs-review":  # its undo or teardown did not complete
-            why = f"operation {old.seq} ({old.plan.op_kind}) was abandoned but needs review before another operation"
+            why = (
+                f"The unfinished {old.plan.op_kind} operation (number {old.seq}) on {name} was abandoned, but part of "
+                f"its cleanup did not complete. It needs your attention before another operation runs on {name}: run "
+                f"`{brand.CLI} status {name}` and read its warnings."
+            )
             raise CannotRun(why, code="needs-review", next=f"{brand.CLI} status {name}")
         return _steps(opening.open_op(layout, docker, compose, plan, host, env, values, fg, tty), 0)
 
@@ -160,7 +192,10 @@ def orphan_check(docker: Docker, name: str, seq: int) -> list[dict[str, Any]]:
     alive = [c["Name"].lstrip("/") for c in found if c["State"]["Status"] in ("running", "restarting", "paused")]
     if alive:
         stop = "; ".join(f"docker stop {n}" for n in alive)
-        why = f"task containers of operation {seq} still run; stop them first: {stop}"
+        why = (
+            f"Helper containers from operation {seq} are still running, so nothing else can start until they stop. "
+            f"Stop them with: {stop}"
+        )
         raise CannotRun(why, code="task-running", next=stop)
     return found
 
@@ -193,7 +228,7 @@ def _apply(op: Op, step: Step) -> tuple[str, dict[str, Any]]:
     try:
         ev = _STEPS[step.type](op, step, EffectToken(op.seq, op.num(step)))
     except Cancelled:
-        return "cancelled", {"code": "cancelled", "error": "cancel requested"}
+        return "cancelled", {"code": "cancelled", "error": _CANCELLED}
     except (IngatError, OSError) as e:
         why, code = (e.message, e.code) if isinstance(e, IngatError) else (str(e), "os-error")
         red, nxt = op.docker.redactor, getattr(e, "next", None)
@@ -207,19 +242,24 @@ def _attempt(op: Op, step: Step) -> tuple[str, dict[str, Any]]:
     op.step, op.attempt = n, op.attempts.get(n, 0) + 1
     op.attempts[n] = op.attempt
     op.journal.intent(n, op.attempt)
-    op.journal.progress(f"step {n} {step.type}: started")
+    _progress(op, n, step, "started")
     if step.type == "Pause":
         return "paused", {}
     phase, ev = _apply(op, step)
     op.journal.close_step(n, phase, ev)
-    op.journal.progress(f"step {n} {step.type}: {phase}")
+    _progress(op, n, step, phase)
     return phase, ev
+
+
+def _progress(op: Op, n: int, step: Step, phase: str) -> None:
+    """A progress line `step <n> <Type>: <phase> (<plain words>)`; the words say what the step does."""
+    op.journal.progress(f"step {n} {step.type}: {phase} ({words.STEP_WORDS.get(step.type, step.type)})")
 
 
 def _steps(op: Op, start: int) -> Res:
     for step in op.plan.steps[start:]:
         if op.cancelled():
-            return _fail(op, step, "cancelled", {"code": "cancelled", "error": "cancel requested"})
+            return _fail(op, step, "cancelled", {"code": "cancelled", "error": _CANCELLED})
         phase, ev = _attempt(op, step)
         if phase == "paused":
             return Res(4, "paused", step.args.get("text", "paused"), op.seq, f"{brand.CLI} resume {op.name}")
@@ -252,7 +292,10 @@ def _forward(op: Op) -> bool:
 
 def _fail(op: Op, step: Step, phase: str, ev: dict[str, Any]) -> Res:
     n = op.num(step)
-    code, why = str(ev.get("code", phase)), str(ev.get("error") or f"step {n} {step.type} ended {phase}")
+    fallback = (
+        f"Step {n} ({step.type}) ended as '{phase}', so the operation could not go on. See the result's warnings."
+    )
+    code, why = str(ev.get("code", phase)), str(ev.get("error") or fallback)
     if code == "task-running":  # F15: never closed while its task container may still run
         return Res(4, code, why, op.seq, ev.get("next"))
     if op.offset:  # a joined task leaves the paused operation as it was
@@ -263,7 +306,7 @@ def _fail(op: Op, step: Step, phase: str, ev: dict[str, Any]) -> Res:
         return Res(4, "interrupted", why, op.seq, f"{brand.CLI} resume {op.name}  or  {brand.CLI} abandon {op.name}")
     types = {op.num(s): s.type for s in op.plan.steps}
     if phase == "cancelled" and all(types.get(k) == "Pause" for k in op.journal.replay()):
-        return _end(op, "abandoned", 130, "cancelled", "cancelled before any effect", n=n)  # only `always` steps act
+        return _end(op, "abandoned", 130, "cancelled", _CANCELLED_EARLY, n=n)  # only `always` steps act
     frozen = _forward(op)
     return _end(op, "failed-frozen" if frozen else "failed-unchanged", 3, code, why, frozen, n)
 
@@ -304,25 +347,28 @@ def _unwind(op: Op, d: dict[str, Any]) -> list[str]:
             warnings.append(f"{what}: {e}")
 
     if d["outcome"].startswith("failed") and d["code"] != "cancelled":
-        guard("record the failed verification", steps.failed_verifications, op, rep, n)
+        guard("could not record that the backup check failed", steps.failed_verifications, op, rep, n)
     for s in op.plan.steps:
         if s.always and rep.get(op.num(s), {}).get("phase") != "done":
             phase, ev = _attempt(op, s)
             if phase != "done":
-                warnings.append(f"step {op.num(s)} {s.type} ended {phase}: {ev.get('error', '')}")
+                warnings.append(f"cleanup step {op.num(s)} ({s.type}) did not finish ({phase}): {ev.get('error', '')}")
 
     writers = op.plan.inputs.get("writers") or []
     live = [k for k, v in op.plan.inputs.get("variants", {}).items() if not v.get("isolated")]
     if frozen and writers and live:
         stop = op.compose.stop
+        what = f"stopping {words.WRITERS} (docker compose stop)"
         guard(
-            "stop writers",
-            lambda: steps.check(stop(EffectToken(op.seq, n), op.project(live[0]), writers, timeout=300), "stop"),
+            f"could not stop {words.WRITERS}",
+            lambda: steps.check(stop(EffectToken(op.seq, n), op.project(live[0]), writers, timeout=300), what),
         )
     for s in [] if frozen else reversed(op.plan.steps):
         if op.num(s) in rep:
-            guard(f"undo step {op.num(s)}", steps.undo, op, s, EffectToken(op.seq, op.num(s)))
-    guard("discard partial outputs", steps.discard, op, [], op.find("bundle_id").get("bundle_id"))
+            what = f"undo step {op.num(s)} ({s.type}) could not be completed"
+            guard(what, steps.undo, op, s, EffectToken(op.seq, op.num(s)))
+    what = "could not remove the half-finished files this operation left behind"
+    guard(what, steps.discard, op, [], op.find("bundle_id").get("bundle_id"))
     return warnings
 
 
@@ -335,7 +381,7 @@ def _close(op: Op, outcome: str, exit: int, code: str, message: str, warnings: l
         if not fs.listdir(op.path("stage")):
             fs.remove_tree(op.path("stage"))
     except (IngatError, OSError) as e:
-        warnings = [*warnings, f"remove scratch leftovers: {e}"]
+        warnings = [*warnings, f"could not remove this operation's temporary working files: {e}"]
     warnings = [*_warnings(op.plan), *warnings]
     nxt = (op.plan.inputs.get("next") or {}).get(outcome) or f"{brand.CLI} status {op.name}"
     rec, now = op.record(), _now()
@@ -347,7 +393,8 @@ def _close(op: Op, outcome: str, exit: int, code: str, message: str, warnings: l
         warnings=warnings,
     )  # fmt: skip
     state.write_doc_once(op.path("result.json"), doc)
-    op.journal.progress(f"operation {outcome}")
+    ended = words.OUTCOME_WORDS.get(outcome)
+    op.journal.progress(f"operation {outcome}" + (f": {ended}" if ended else ""))
     return Res(exit, code, message, op.seq, nxt, tuple(warnings), outcome)
 
 
@@ -378,7 +425,11 @@ def _resume(op: Op) -> Res:
     elif first.klass == "scratch" and not first.always:
         i = _rewind(op, first)
     elif first.type == "RunTask" and first.klass == "forward" and phase and not first.args.get("idempotent"):
-        why = f"step {first.n} ({first.type}) may have run and is not safe to repeat"
+        why = (
+            f"Step {first.n} ({first.type}) may already have run before the interruption, and running it a second "
+            "time is not safe, so it will not be repeated automatically. Check in the app whether it took effect; "
+            f"`{brand.CLI} status {op.name}` shows what to do next."
+        )
         if _write_task(op, first):
             return _fail(op, first, "unknown", {"code": "unknown", "error": why})
         raise NeedsAttention(why, code="unknown", next=f"{brand.CLI} status {op.name}")
@@ -408,7 +459,18 @@ def _abandon(op: Op, outcome: str) -> Res:
     rep = op.journal.replay()
     if CLOSE in rep:
         return _finish(op, rep[CLOSE]["done_evidence"])
-    return _end(op, outcome, 0, outcome, f"operation {op.seq} {outcome}", _forward(op), max(rep, default=0))
+    frozen = _forward(op)
+    auto = " automatically to make way for the new command" if outcome == "abandoned-auto" else ""
+    what = (
+        f"it had started changing data, so its changes are not undone and {words.WRITERS} stay stopped"
+        if frozen
+        else "what it had done was undone where that was possible"
+    )
+    msg = (
+        f"Operation {op.seq} was abandoned{auto}: {what}. The result's warnings and `{brand.CLI} status {op.name}` "
+        "show anything left to do."
+    )
+    return _end(op, outcome, 0, outcome, msg, frozen, max(rep, default=0))
 
 
 def _now() -> str:

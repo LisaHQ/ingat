@@ -19,6 +19,12 @@ from ingat.store import fs, state
 
 STOP_GRACE = 10
 PAYLOAD = "payload/"
+TASK_WORDS = {  # how a task's outcome reads in its error (`ok` never gets there; a stray word falls back to itself)
+    "finding": "finished but reported findings this operation does not accept",
+    "refused": "refused to run, so it changed nothing",
+    "failed": "failed",
+    "unknown": "ended in an unknown state: it cannot be told whether it changed data",
+}
 
 
 def outcome(a: dict[str, Any], code: int | None) -> str:
@@ -50,8 +56,15 @@ def _payload(op: Op, bid: str) -> dict[str, str]:
     """The payload files of a sealed bundle as SHA256SUMS lists them, after re-checking it against the catalog."""
     sums = fs.read(os.path.join(op.layout.bundle_dir(op.name, bid), SUMS))
     if bundle_hash(sums) != state.read_doc(op.layout.catalog(op.name, bid), "catalog")["bundle_hash"]:
-        raise Failed(f"bundle {bid}: SHA256SUMS does not match the catalog", code="bundle-hash")
+        raise Failed(_mismatch(bid), code="bundle-hash")
     return {p.removeprefix(PAYLOAD): h for p, h in parse_sums(sums).items() if p.startswith(PAYLOAD)}
+
+
+def _mismatch(bid: str) -> str:
+    return (
+        f"The backup copy {bid} does not match its recorded checksum (its {SUMS} file differs from the catalog "
+        "entry). The copy may be damaged or altered; do not rely on it until this is explained."
+    )
 
 
 def _capacity(needs: dict[str, int]) -> None:
@@ -62,7 +75,11 @@ def _capacity(needs: dict[str, int]) -> None:
         want[dev] = want.get(dev, 0) + size
     for dev, size in want.items():
         if size > free[dev]:
-            raise Refused(f"{size} bytes needed on one filesystem, {free[dev]} available", code="capacity")
+            why = (
+                f"Not enough free disk space: this needs about {size:,} bytes but only {free[dev]:,} bytes are free "
+                "on that disk. The operation stops here. Free some space, then try again."
+            )
+            raise Refused(why, code="capacity")
 
 
 def _source(op: Op, a: dict[str, Any], source: str, values: dict[str, str]) -> str:
@@ -104,7 +121,11 @@ def run_task(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
     a = step.args
     term_in, term_out = a.get("stdin") == "terminal", a.get("stdout") == "terminal"
     if ((term_in or term_out) and not op.foreground) or (term_in and not op.tty):
-        raise CannotRun(f"task {a['task']} uses the terminal: run it in the foreground on a terminal", code="no-tty")
+        why = (
+            f"The task {a['task']} needs to talk to you on screen, so it cannot run in the background. Run the "
+            "command from a terminal window, not from a script or a background job."
+        )
+        raise CannotRun(why, code="no-tty")
     _capacity(a.get("capacity") or {})
     v = op.variant(a["variant"])
     safe_binds(op, a["variant"])
@@ -168,7 +189,10 @@ def run_task(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
     ev["phase"] = "cancelled" if stopped else phase(a, out)
     if ev["phase"] != "done":
         ev["code"] = "cancelled" if stopped else f"task-{out}"
-        ev["error"] = f"task {a['task']} ended {out} (exit {res.code}): {res.err.strip()[-300:]}"
+        how = TASK_WORDS.get(out, f"ended {out}")
+        ev["error"] = (
+            f"The task {a['task']} {how} (exit code {res.code}). The app's last output: {res.err.strip()[-300:]}"
+        )
     return ev
 
 
@@ -178,7 +202,10 @@ def _stop(op: Op, t: EffectToken, name: str) -> None:
     try:
         op.docker.stop(t, name, STOP_GRACE)
     except IngatError as e:
-        why = f"task container {name} may still run ({e.message}); stop it, then resume or abandon"
+        why = (
+            f"The helper container {name} may still be running ({e.message}). Stop it with `docker stop {name}`, "
+            "then resume or abandon the operation."
+        )
         raise NeedsAttention(why, code="task-running", next=f"docker stop {name}") from e
 
 
@@ -208,10 +235,15 @@ def _begin(op: Op, a: dict[str, Any]) -> dict[str, Any]:
     values = {**base, **op.values(), "bundle.stamp": stamp, "class": a["class"]}
     bid = templates.render(a["naming"], values)
     if not ID_RE.fullmatch(bid):
-        raise Refused(f"bundle id {bid!r} must match {ID_RE.pattern}", code="bundle-id")
+        why = f"The backup copy name {bid!r} is not allowed: it must match the pattern {ID_RE.pattern}."
+        raise Refused(why, code="bundle-id")
     paths = (op.layout.catalog, op.layout.bundle_dir, op.layout.incoming_dir)
     if any(fs.exists(p(op.name, bid)) for p in paths):
-        raise Refused(f"bundle id {bid} is already used", code="bundle-exists")
+        why = (
+            f"A backup copy named {bid} already exists (or one by that name was left half made), and an existing "
+            "backup copy is never overwritten. The operation stops here."
+        )
+        raise Refused(why, code="bundle-exists")
     payload = templates.render(a["payload"], {**values, "bundle.id": bid}) if a.get("payload") else None
     fs.make_empty_dir(op.path("stage"), 0o700, _owner(a.get("stage_owner")))
     out = {"bundle.id": bid, "bundle.stamp": stamp, **({"bundle.payload": payload} if payload else {})}
@@ -225,9 +257,11 @@ def _seal(op: Op, a: dict[str, Any]) -> dict[str, Any]:
     entries = fs.listdir(stage)
     if len(entries) != 1 or (payload and entries != [payload]):
         want = f"exactly one entry{f' named {payload}' if payload else ''}"
-        raise Failed(
-            f"the backup tasks left {len(entries)} top-level entries in the stage; {want} is required", code="payload"
+        why = (
+            f"The app's backup step produced {len(entries)} items where {want} was expected, so the backup copy "
+            "could not be finished. This usually points to a problem in the app's backup definition."
         )
+        raise Failed(why, code="payload")
     work = op.path("bundle", bid)
     fs.rename(os.path.join(stage, entries[0]), os.path.join(work, "payload", entries[0]))
     fs.remove_tree(stage)
@@ -289,11 +323,15 @@ def verify(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
     sums = fs.read(os.path.join(d, SUMS))
     found = _tree(d)
     if bundle_hash(sums) != digest or found.pop(SUMS, None) != records.sha256_hex(sums):
-        raise Failed(f"bundle {bid}: SHA256SUMS does not match the catalog", code="bundle-hash")
+        raise Failed(_mismatch(bid), code="bundle-hash")
     listed = parse_sums(sums)
     if found != listed:
         odd = sorted(p for p in set(found) | set(listed) if found.get(p) != listed.get(p))
-        raise Failed(f"bundle {bid}: files differ from SHA256SUMS: {', '.join(odd)}", code="bundle-hash")
+        why = (
+            f"The backup copy {bid} failed its check: these files are missing, extra or changed: {', '.join(odd)}. "
+            "Do not rely on this copy."
+        )
+        raise Failed(why, code="bundle-hash")
     entry = records.loads(fs.read(os.path.join(d, "bundle.json")))["payload"]["entry"]
     ev = {"bundle_id": bid, "bundle_hash": digest, "entry": entry, "input_dir": None}
     ev["values"] = {"bundle.id": bid, "bundle.payload": entry}

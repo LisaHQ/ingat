@@ -42,21 +42,28 @@ def cli(
     CannotRun whatever the command; any other non-zero exit is the caller's to judge."""
     res = runner.run(["docker", *args], env={"DOCKER_CONFIG": config_dir}, timeout=timeout, redactor=redactor, **kw)
     if res.code != 0 and _UNREACHABLE.search(res.err):
-        raise CannotRun("the Docker daemon is unreachable", code="daemon-unreachable")
+        why = (
+            "Docker on this computer cannot be reached. Make sure Docker is running and that this user is allowed to "
+            "use it, then try again."
+        )
+        raise CannotRun(why, code="daemon-unreachable")
     return res
 
 
 def check(res: Result, what: str, error: type[IngatError] = CannotRun) -> Result:
     if res.code != 0:
-        detail = "timed out" if res.timed_out else res.err.strip()[-400:]
-        raise error(f"{what} failed: {detail}", code="docker")
+        tail = res.err.strip()[-400:]
+        why = (
+            f"{what} did not succeed: it timed out" if res.timed_out else f"{what} did not succeed. Docker said: {tail}"
+        )
+        raise error(why, code="docker")
     return res
 
 
 def whole(res: Result, what: str) -> str:
     """stdout of a successful call that is about to be parsed (run with limit=QUERY_LIMIT)."""
     if check(res, what).truncated:
-        raise CannotRun(f"{what} failed: output exceeded {QUERY_LIMIT} bytes", code="docker")
+        raise CannotRun(f"{what} did not succeed: its output exceeded {QUERY_LIMIT} bytes", code="docker")
     return res.out
 
 
@@ -118,7 +125,7 @@ class Docker:
 
     def logs(self, name: str, *, since: str | None = None, tail: int | None = None) -> Result:
         opts = [*(["--since", since] if since else []), *(["--tail", str(tail)] if tail is not None else [])]
-        return check(self._run("logs", *opts, "--", name), "docker logs")
+        return check(self._run("logs", *opts, "--", name), f"reading the log of {name} (docker logs)")
 
     def events(self, since: str, until: str, filters: Sequence[str] = ()) -> list[dict[str, Any]]:
         """Daemon events in [since, until] (label filters match container events only)."""
@@ -132,19 +139,20 @@ class Docker:
 
     # effects
     def pull(self, t: EffectToken, ref: str, *, tick: Callable[[], None] | None = None) -> None:
-        check(self._run("pull", "-q", "--", ref, timeout=PULL_TIMEOUT, tick=tick), "docker pull", Failed)
+        what = f"downloading the image {ref} (docker pull)"
+        check(self._run("pull", "-q", "--", ref, timeout=PULL_TIMEOUT, tick=tick), what, Failed)
 
     def stop(self, t: EffectToken, name: str, grace: int) -> None:
         """Stop a container; one that is already gone counts as stopped."""
         res = self._run("stop", "-t", str(grace), "--", name, timeout=grace + QUERY_TIMEOUT)
         if not _only_missing(res):
-            check(res, "docker stop", Failed)
+            check(res, f"stopping the container {name} (docker stop)", Failed)
 
     def remove_container(self, t: EffectToken, cid: str) -> None:
         """Remove a stopped container, never forced and never with its volumes; one already gone counts as removed."""
         res = self._run("rm", "--", cid)
         if not _only_missing(res):
-            check(res, "docker rm", Failed)
+            check(res, "removing the stopped container (docker rm)", Failed)
 
     def launch_executor(
         self,
@@ -169,7 +177,7 @@ class Docker:
                 if res.code == 0:
                     return res.out.strip()
                 if "Conflict" not in res.err:
-                    check(res, "docker run")
+                    check(res, f"starting the background worker container {name} (docker run)")
             if time.monotonic() >= deadline:
                 raise CannotRun(f"container {name} is still present", code="executor-running")
             time.sleep(POLL)

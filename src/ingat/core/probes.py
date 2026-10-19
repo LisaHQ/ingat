@@ -87,9 +87,11 @@ def wait(op: Op, project: str, p: dict[str, Any]) -> Any:
         if since is not None and now - since >= float(p.get("stable", 0)):
             return doc
         if now >= deadline:
-            raise Failed(
-                f"probe {p['name']} did not pass for {p.get('stable', 0)}s within {p['timeout']}s", code="probe"
+            why = (
+                f"The app did not become ready in time: the readiness check '{p['name']}' did not stay passing for "
+                f"{p.get('stable', 0)} seconds within the {p['timeout']}-second limit."
             )
+            raise Failed(why, code="probe")
         end = min(deadline, now + float(p.get("interval", 2)))
         while (left := end - time.monotonic()) > 0:
             op.tick()
@@ -121,16 +123,22 @@ def up(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
     found = containers(op, proj.name)
     if a.get("identity"):
         if not found:
-            raise Failed(f"project {proj.name} has no service containers", code="identity")
+            why = f"No running containers were found for {proj.name}, so it cannot be confirmed as running."
+            raise Failed(why, code="identity")
         for c in found:
             svc = c["Config"]["Labels"].get(SERVICE_LABEL)
             if v["images"].get(svc) != c["Image"] or not c["State"]["Running"]:
-                raise Failed(f"service {svc} is not running the recorded image {v['images'].get(svc)}", code="identity")
+                why = (
+                    f"The service {svc} is not running, or it runs a different app build than the planned one "
+                    f"({v['images'].get(svc)}), so the deployment cannot be confirmed."
+                )
+                raise Failed(why, code="identity")
     for p in v.get("smoke", []) if a.get("smoke") else []:
         if isolated and p["kind"] == "http":
             ev["probes"]["smoke:" + p["name"]] = "n/a"
         elif not attempt(op, proj.name, p)[0]:
-            raise Failed(f"smoke probe {p['name']} failed", code="smoke")
+            why = f"The final check '{p['name']}' failed: the app started but did not answer as expected."
+            raise Failed(why, code="smoke")
         else:
             ev["probes"]["smoke:" + p["name"]] = "pass"
     if a.get("reopens_writes"):

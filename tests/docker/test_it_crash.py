@@ -268,7 +268,8 @@ class Crashes(unittest.TestCase):
         if cli:
             self.assertEqual(code, 137, f"{point}: the CLI was not killed\n{out}{err}")
         else:
-            self.assertEqual((code, "the executor vanished" in out + err), (4, True), f"{point}:\n{out}{err}")
+            gone = "The background worker that was running this operation disappeared" in out + err
+            self.assertEqual((code, gone), (4, True), f"{point}:\n{out}{err}")
         opened = H.record(name)["open_op"]
         self.assertIsNotNone(opened, f"{point}: no operation is open\n{out}{err}")
         return int(opened["seq"])
@@ -407,7 +408,8 @@ class Named(Crashes):
         self.assertEqual((code, op["kind"], op["state"], doc["next"]), want)
         res = H.cli("scheduled", "backup", name)
         self.assertEqual((res[0], res[2]), (0, ""), res)
-        line = f"scheduled backup {name}: completed (operation {seq + 1}); operation {seq} (backup) abandoned-auto\n"
+        line = (f"scheduled backup {name}: completed (operation {seq + 1}); the earlier unfinished operation {seq} "
+                "(backup) was undone and closed automatically first\n")  # fmt: skip
         self.assertEqual(res[1], line)
         self.assertEqual(self.converge(name), [])
         self.converged(name, seq, before, [], "abandoned-auto")
