@@ -34,7 +34,7 @@ MVP (M0-M2): about 5.5k lines (about 5.2k Python plus 0.3k shell), 7 slices. The
 |---|---|
 | S1 | Same-path binds, `env_file` and file secrets resolve correctly when Compose runs inside the tool container |
 | S2 | A detached executor survives an SSH drop, a closed terminal and a killed client; its result reaches the follower; a root run from the host scheduler (no TTY; DSM Task Scheduler on the first host) gets the right exit code |
-| S3 | `flock` on a bind-mounted file on an ext4 volume excludes across two containers |
+| S3 | `flock` on a bind-mounted file on a local volume (ext4 or Btrfs) excludes across two containers |
 | S4 | The bundled docker CLI (29.x, else 28.x) and Compose v5.x (else the last passing v2.x) work against Synology's Engine 24.0.2 (API 1.43): `config --format json --no-env-resolution`, `config --hash`, `up --wait`, `run --name --label -v`; the host's Compose v2.20.1 is never used. No build checks: owner decision OD-11 chose CI builds (ADR-0026) |
 | S5 | An override with `image: sha256:<id>`, `pull_policy: never`, `build: !reset null`, an external generation volume `name:`, `ports: !reset []`, `internal: true` networks and the `logging: {driver: local}` block starts exactly the pinned image and `docker logs` reads it on Synology's Engine; a terminal `compose run` with `logging: {driver: none}` still reaches the terminal; which inputs enter `config --hash` (labels, logging, `env_file` paths and contents) |
 | S6 | Single-quoted values in `--env-file` and `env_file` are read literally |
