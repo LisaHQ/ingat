@@ -1,6 +1,6 @@
 # Ingat operator guide (M1)
 
-Status: describes the M1 command set as it exists in code ([`README.md`](../../README.md) "Commands (M1)"). Restores, class D approvals, `secret set` and the `plan`/`apply` hand-over to agents arrive in M2 ([`ROADMAP.md`](../ROADMAP.md)); this guide says so where it matters. The reasons behind every rule are in [`LIFECYCLE.md`](../LIFECYCLE.md) and [`ARCHITECTURE.md`](../ARCHITECTURE.md); this guide only says what to type and what you will see. A Vietnamese mirror is at [`vi/operator-guide.md`](vi/operator-guide.md).
+Status: describes the M1 command set as it exists in code ([`README.md`](../../README.md) "Commands (M1)"). Restores, class D approvals, `secret set` and the `plan`/`apply` hand-over to agents arrive in M2 ([`ROADMAP.md`](../ROADMAP.md)); this guide says so where it matters. The reasons behind every rule are in [`LIFECYCLE.md`](../LIFECYCLE.md) and [`ARCHITECTURE.md`](../ARCHITECTURE.md); this guide only says what to type and what you will see. A Vietnamese translation is at [`operator-guide.vi.md`](operator-guide.vi.md).
 
 Every command is run as the machine's administrator user (root) through a small start script (`/srv/ingat/bin/ingat` with the default folders; `/volume1/ingat/bin/ingat` in the DSM profile, used on Synology NAS systems). Below, `ingat` stands for that path, and `lite-test` is an example instance (one installed copy of an app) of the sample app `fx-lite`.
 

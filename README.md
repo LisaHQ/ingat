@@ -147,10 +147,10 @@ Run as root through the wrapper (`/srv/ingat/bin/ingat` under the default root).
 | [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) | Safety floors, approval classes, the operation and instance state machines, every operation step by step (adoption included), data strategies, exit codes, scheduled jobs |
 | [`docs/MANIFEST_SPEC.md`](docs/MANIFEST_SPEC.md) | The app manifest (`ingat.toml`) and instance config (`instance.toml`) schemas, with complete generic examples |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Milestones M0-M5 with exit gates, sizes and triggers |
-| [`docs/runbooks/operator-guide.md`](docs/runbooks/operator-guide.md) | Operator guide for the M1 command set: install, certify, register, deploy, day-to-day commands, scheduled jobs, recovery, upgrade; Vietnamese mirror in [`docs/runbooks/vi/`](docs/runbooks/vi/operator-guide.md) |
+| [`docs/runbooks/operator-guide.md`](docs/runbooks/operator-guide.md) | Operator guide for the M1 command set: install, certify, register, deploy, day-to-day commands, scheduled jobs, recovery, upgrade; Vietnamese translation in [`operator-guide.vi.md`](docs/runbooks/operator-guide.vi.md) |
 | [`docs/adr/README.md`](docs/adr/README.md) | Index of the numbered architecture decision records (`docs/adr/NNNN-*.md`) |
 
-[Install](#install) and [Commands (M1)](#commands-m1) above summarise the M1 install and command set; [`docs/runbooks/operator-guide.md`](docs/runbooks/operator-guide.md) walks an operator through them, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3.4 and [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) §2-§4 hold the details, and a generated command reference arrives in M3. Docs stay English; operator runbooks have Vietnamese mirrors under `docs/runbooks/vi/` (the M1 guide now; M3 completes them).
+[Install](#install) and [Commands (M1)](#commands-m1) above summarise the M1 install and command set; [`docs/runbooks/operator-guide.md`](docs/runbooks/operator-guide.md) walks an operator through them, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3.4 and [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) §2-§4 hold the details, and a generated command reference arrives in M3. Docs stay English; each operator runbook has a Vietnamese translation beside it as `<name>.vi.md` (the M1 guide now; M3 completes them).
 
 ## Conventions used in every document
 

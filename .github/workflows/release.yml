@@ -1,4 +1,4 @@
-# Release on a tag vX.Y.Z (CLAUDE.md §9; ARCHITECTURE.md §3.1, §3.6; ADR-0029). The ci workflow runs inside this run:
+# Release on a tag vX.Y.Z (CLAUDE.md, Releases; ARCHITECTURE.md §3.1, §3.6; ADR-0029). The ci workflow runs inside this run:
 # static checks, unit tests, the one multi-arch build of the image, the three real-Docker lanes on that image, and
 # tested.json from the lanes that passed. The release image is the tested image plus one final layer holding that
 # tested.json. It is pushed by digest with provenance and SBOM attestations, checked per architecture against the tested

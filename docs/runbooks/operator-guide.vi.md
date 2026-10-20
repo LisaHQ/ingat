@@ -1,15 +1,15 @@
 # Hướng dẫn vận hành Ingat (M1)
 
-Trạng thái: bản dịch của [`../operator-guide.md`](../operator-guide.md), bản tiếng Anh là bản chuẩn. Mô tả bộ lệnh M1 như đang có trong mã ([`README.md`](../../../README.md), mục "Commands (M1)"). Restore, duyệt class D, `secret set` và cơ chế `plan`/`apply` cho agent sẽ có ở M2 ([`ROADMAP.md`](../../ROADMAP.md)); hướng dẫn nói rõ ở những chỗ liên quan. Lý do của từng quy tắc nằm trong [`LIFECYCLE.md`](../../LIFECYCLE.md) và [`ARCHITECTURE.md`](../../ARCHITECTURE.md); tài liệu này chỉ nói gõ gì và sẽ thấy gì.
+Trạng thái: bản dịch của [`operator-guide.md`](operator-guide.md), bản tiếng Anh là bản chuẩn. Mô tả bộ lệnh M1 như đang có trong mã ([`README.md`](../../README.md), mục "Commands (M1)"). Restore, duyệt class D, `secret set` và cơ chế `plan`/`apply` cho agent sẽ có ở M2 ([`ROADMAP.md`](../ROADMAP.md)); hướng dẫn nói rõ ở những chỗ liên quan. Lý do của từng quy tắc nằm trong [`LIFECYCLE.md`](../LIFECYCLE.md) và [`ARCHITECTURE.md`](../ARCHITECTURE.md); tài liệu này chỉ nói gõ gì và sẽ thấy gì.
 
 Mọi lệnh chạy bằng tài khoản quản trị của máy (root) qua một script khởi động nhỏ (`/srv/ingat/bin/ingat` với các thư mục mặc định; `/volume1/ingat/bin/ingat` theo hồ sơ DSM, dùng trên NAS Synology). Dưới đây `ingat` là đường dẫn đó, và `lite-test` là một instance ví dụ (một bản cài của một app) của app mẫu `fx-lite`.
 
 ## 1. Trước khi bắt đầu
 
-- **Host:** Docker Engine Linux 24.0 trở lên có plugin `docker compose`, truy cập được bằng root qua socket cục bộ; SSH với `sudo -i`; một bộ lập lịch gửi mail khi job lỗi (systemd timer, cron, hoặc DSM Task Scheduler); một công cụ sao chép backup ra ngoài host (restic, borg, rsync, hoặc Hyper Backup trên DSM). Chi tiết: [`ARCHITECTURE.md`](../../ARCHITECTURE.md) §11.4.
+- **Host:** Docker Engine Linux 24.0 trở lên có plugin `docker compose`, truy cập được bằng root qua socket cục bộ; SSH với `sudo -i`; một bộ lập lịch gửi mail khi job lỗi (systemd timer, cron, hoặc DSM Task Scheduler); một công cụ sao chép backup ra ngoài host (restic, borg, rsync, hoặc Hyper Backup trên DSM). Chi tiết: [`ARCHITECTURE.md`](../ARCHITECTURE.md) §11.4.
 - **Hai thư mục:** `INGAT_ROOT` giữ các bản ghi của tool và dữ liệu thật của những app lưu dữ liệu trong thư mục thường (mặc định `/srv/ingat`; phải thuộc root với quyền `0700`, tức chỉ root mở được, và nằm trên ổ đĩa trong máy này, không bao giờ là ổ mạng). `INGAT_BACKUPS` giữ các bản backup đã hoàn tất, mỗi bản được niêm phong bằng mã kiểm tra để mọi thay đổi về sau đều bị phát hiện (mặc định `/srv/ingat-backups`; chỉ root ghi vào đó, và đây là thư mục để bạn chép ra nơi khác). Trên DSM truyền `--root /volume1/ingat --backups /volume1/ingat-backups` lúc cài; không bao giờ dùng mặc định `/srv` ở đó.
 - **Tool chỉ nhìn thấy hai thư mục này.** Nó chạy trong một hộp riêng (container) chỉ được cho thấy `INGAT_ROOT` và `INGAT_BACKUPS`, không thấy gì khác trên máy. Vì vậy mọi đường dẫn tệp bạn đưa cho nó (`init --config`, `validate <thư-mục-repo>`, `validate --instance`, file `--input` của task) phải là đường dẫn đầy đủ bắt đầu từ một trong hai thư mục đó, nếu không tool sẽ không tìm thấy tệp; `INGAT_ROOT/inbox/` là chỗ để các tệp và mã nguồn như vậy.
-- **App của bạn:** cần `ingat.toml` trong repository và image build bởi CI ([`MANIFEST_SPEC.md`](../../MANIFEST_SPEC.md); checklist onboarding trong [`ARCHITECTURE.md`](../../ARCHITECTURE.md) §11.3). `ingat validate <thư-mục-repo>` kiểm tra một checkout offline (ví dụ một checkout dưới `INGAT_ROOT/inbox/`).
+- **App của bạn:** cần `ingat.toml` trong repository và image build bởi CI ([`MANIFEST_SPEC.md`](../MANIFEST_SPEC.md); checklist onboarding trong [`ARCHITECTURE.md`](../ARCHITECTURE.md) §11.3). `ingat validate <thư-mục-repo>` kiểm tra một checkout offline (ví dụ một checkout dưới `INGAT_ROOT/inbox/`).
 - **Phiên bản Docker đã kiểm thử:** lệnh có thay đổi chỉ chạy trên dòng phiên bản Docker Engine mà bản phát hành này của tool đã được kiểm thử cùng (danh sách nằm sẵn trong tool, tệp `tested.json`), và chỉ sau lần kiểm tra máy ở mục 2 (chạy lại sau mỗi lần cập nhật máy). Trên phiên bản Docker khác, `ingat status` báo `not a tested combination of this release`: bạn vẫn xem được trạng thái và vẫn backup được theo cách không dừng app, nhưng mọi lệnh có thay đổi app hay dữ liệu đều từ chối. Vì vậy đừng để Docker tự cập nhật: trên host Linux hãy ghim `docker-ce` (`apt-mark hold`), và chỉ lên Docker mới cùng với một bản phát hành tool đã được kiểm thử với nó.
 
 ## 2. Cài đặt và chứng nhận host (một lần)
@@ -33,7 +33,7 @@ Cài offline: `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` n
 
 ## 3. Đăng ký một instance
 
-1. Viết file instance vào inbox, ví dụ `/srv/ingat/inbox/lite-test.toml` (schema và ví dụ đầy đủ: [`MANIFEST_SPEC.md`](../../MANIFEST_SPEC.md) §6 và §12). Tối thiểu cho `fx-lite`:
+1. Viết file instance vào inbox, ví dụ `/srv/ingat/inbox/lite-test.toml` (schema và ví dụ đầy đủ: [`MANIFEST_SPEC.md`](../MANIFEST_SPEC.md) §6 và §12). Tối thiểu cho `fx-lite`:
 
    ```toml
    instance = 1
