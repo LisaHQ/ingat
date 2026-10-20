@@ -94,6 +94,16 @@ class BackupPlanningTest(unittest.TestCase):
             fs.append_line(lay.verification(n, bid), records.dumps(records.new_doc("verification", **ok, at=created)))
         return str(entry["bundle_hash"])
 
+    def died(self, cid: str, since: str) -> None:
+        """`docker stop` can return before the daemon publishes the container's die event; wait for that event, so a
+        planning window opened next sees no event of this instance."""
+        end = time.monotonic() + 30
+        while time.monotonic() < end:
+            if self.ctx.docker.events(since, f"{time.time():.6f}", [f"container={cid}", "event=die"]):
+                return
+            time.sleep(0.2)
+        self.fail(f"no die event of {cid} within 30 s")
+
     def planned(self, fn: Any, *args: Any, **kw: Any) -> Any:
         """Plan with a fresh context: nothing written under instances/ or the backups root, no Docker event of this
         instance, no secret in the plan, and the plan survives its own JSON form."""
@@ -348,7 +358,9 @@ class BackupPlanningTest(unittest.TestCase):
                 self.planned(backup.plan_backup, klass, None, False)
             self.assertEqual((cm.exception.code, cm.exception.next), ("changed-outside", f"{brand.CLI} stop {n}"))
         state.replace_doc(lay.record_json(n), rec)
+        since = f"{time.time() - 1:.6f}"
         tp.docker("stop", "-t", "5", app["Id"])  # stopped while the record says running: as `stop <i> app` leaves it
+        self.died(app["Id"], since)
         capture = [("CaptureBundle", "scratch"), ("RunTask", "scratch"), ("CaptureBundle", "scratch")]
         verified = [("VerifyBundle", "scratch"), ("Record", "idempotent")]
         for klass in ("pre-change", "manual"):

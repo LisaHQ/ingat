@@ -26,7 +26,7 @@ from typing import Any
 
 from ingat import brand
 from ingat.store import state
-from tests.harness import host
+from tests.harness import background, host
 
 CLI = brand.CLI
 APP_ENV = {"ALLOWED_ORIGINS": "http://127.0.0.1", "BASE_URL": "http://127.0.0.1", "MAIL_SENDER": "fx@example.invalid"}
@@ -107,11 +107,18 @@ class Lifecycle(unittest.TestCase):
                 out[labels["com.docker.compose.service"]] = (c["Id"], c["State"]["Status"])
         return out
 
-    def recreated(self, name: str, since: str, until: str) -> tuple[list[str], list[str]]:
-        """(services created, services destroyed) of `name`'s live project in the window (role app), failing on
-        any task container of the instance (role task)."""
+    def stream(self) -> background.EventStream:
+        """The container events from now on, streamed: replaying the daemon's buffer (`host.events`) loses the start
+        of a long window once a few hundred newer events (probe execs among them) have pushed it out."""
+        w = background.EventStream()
+        self.addCleanup(w.close)
+        return w
+
+    def recreated(self, name: str, evs: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+        """(services created, services destroyed) of `name`'s live project among `evs` (role app), failing on any
+        task container of the instance (role task)."""
         made, gone = list[str](), list[str]()
-        for e in host.events(since, until):
+        for e in evs:
             attrs = e.get("Actor", {}).get("Attributes", {})
             if e.get("Type") != "container" or e.get("Action") not in ("create", "destroy"):
                 continue
@@ -125,10 +132,10 @@ class Lifecycle(unittest.TestCase):
         doc: dict[str, Any] = json.loads(Path(H.layout.bundle_dir(name, bid), "bundle.json").read_bytes())
         return doc
 
-    def order(self, name: str, seq: int, since: str, tasks: list[int]) -> list[int]:
-        """Event positions in the window: the live app container's death, the creation of operation `seq`'s task
-        containers of `tasks` (step numbers), the creation of the new live app container."""
-        evs = [e for e in host.events(since, host.now()) if e.get("Type") == "container"]
+    def order(self, name: str, seq: int, w: background.EventStream, tasks: list[int]) -> list[int]:
+        """Event positions among the streamed events: the live app container's death, the creation of operation
+        `seq`'s task containers of `tasks` (step numbers), the creation of the new live app container."""
+        evs = [e for e in w.events() if e.get("Type") == "container"]
 
         def first(action: str, want: dict[str, str]) -> int:
             hits = [
@@ -268,7 +275,7 @@ class Lifecycle(unittest.TestCase):
 
         # deploy B: data-changing (a writer's image changes): freeze, pre-change bundle sealed and verified with the
         # current release, then migrate on the candidate (the forward point) and start it at schema 2
-        since = host.now()
+        w = self.stream()
         out = self.run_tty("deploy", name, b, answer=name)
         self.assertIn(f"preparing {b} first", out)
         seq, plan, _ = self.last(name, "deploy")
@@ -294,7 +301,7 @@ class Lifecycle(unittest.TestCase):
                          ("writers-stopped", 1, a))  # fmt: skip
         self.assertEqual((sealed["schema"], bool(sealed["freeze_at"])), ({"expected": 1, "actual": 1}, True))
         # the daemon's own order: the writer stops, then the backup task runs, then the migrate, then the new app
-        order = self.order(name, seq, since, [types.index(("RunTask", "backup")) + 1, migrate + 1])
+        order = self.order(name, seq, w, [types.index(("RunTask", "backup")) + 1, migrate + 1])
         self.assertEqual(order, sorted(order), order)
         self.assertEqual(H.record(name)["generations"], {"data": 1})  # migrated in place, after the bundle
         ready = get(f"http://127.0.0.1:{port}/api/ready")
@@ -305,9 +312,9 @@ class Lifecycle(unittest.TestCase):
 
         # a config-only change: the owner edits a plain app_env value; exactly the service it changes is recreated
         Path(H.layout.inst_toml(name)).write_text(Path(H.layout.inst_toml(name)).read_text() + 'SESSION_HOURS = "12"\n')
-        before, since = self.services(name)["app"], host.now()
+        before, w = self.services(name)["app"], self.stream()
         self.run_tty("deploy", name, b, answer=name)
-        made, gone = self.recreated(name, since, host.now())
+        made, gone = self.recreated(name, w.events())
         self.assertEqual((made, gone), (["app"], ["app"]))
         _, plan, _ = self.last(name, "deploy")
         self.assertEqual([(s["type"], s["args"]["services"]) for s in plan["steps"][:2]], [("Up", ["app"]), ("Up", [])])
@@ -367,9 +374,9 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual((H.record(name)["state"], self.deployment(name, 1)["origin"]), ("running", "install"))
         self.assertIn(f"fx-web {a}", str(get(f"http://127.0.0.1:{port}/")))
 
-        before, since = self.services(name)["site"], host.now()
+        before, w = self.services(name)["site"], self.stream()
         self.run_tty("deploy", name, b, answer=name)  # a config-only commit: the image stays, the site is recreated
-        self.assertEqual(self.recreated(name, since, host.now()), (["site"], ["site"]))
+        self.assertEqual(self.recreated(name, w.events()), (["site"], ["site"]))
         _, plan, _ = self.last(name, "deploy")
         self.assertEqual([s["type"] for s in plan["steps"]], ["Up", "Up", "Record"])
         second = self.deployment(name, 2)

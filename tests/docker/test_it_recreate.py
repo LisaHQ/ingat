@@ -22,7 +22,7 @@ from typing import Any
 
 from ingat import brand
 from ingat.store import state
-from tests.harness import host
+from tests.harness import background, host
 
 OP_DIR = re.compile(r"([0-9]+)-([a-z-]+)")
 TOUCH = ("create", "start", "restart", "kill", "stop", "die", "destroy", "pause", "unpause")
@@ -64,10 +64,17 @@ class RecreateScope(unittest.TestCase):
                 out[labels["com.docker.compose.service"]] = (c["Id"], c["State"]["StartedAt"])
         return out
 
-    def touched(self, since: str) -> dict[str, list[str]]:
-        """service -> the daemon's lifecycle events on the live project's containers since `since`."""
+    def stream(self) -> background.EventStream:
+        """The container events from now on, streamed: replaying the daemon's buffer (`host.events`) loses the start
+        of a long window once a few hundred newer events (probe execs among them) have pushed it out."""
+        w = background.EventStream()
+        self.addCleanup(w.close)
+        return w
+
+    def touched(self, w: background.EventStream) -> dict[str, list[str]]:
+        """service -> the daemon's lifecycle events on the live project's containers that `w` saw."""
         out: dict[str, list[str]] = {}
-        for e in host.events(since, host.now()):
+        for e in w.events():
             attrs = e.get("Actor", {}).get("Attributes", {})
             own = e.get("Type") == "container" and attrs.get("com.docker.compose.project") == self.name
             if own and e.get("Action") in TOUCH:
@@ -76,7 +83,7 @@ class RecreateScope(unittest.TestCase):
 
     def deploy(self, commit: str, changed: list[str]) -> None:
         """Deploy `commit` and check that exactly `changed` were recreated, in the plan and on the daemon."""
-        before, since = self.services(), host.now()
+        before, w = self.services(), self.stream()
         res = H.cli("deploy", self.name, commit, tty=True, answer=self.name)
         self.assertEqual(res[0], 0, res[1])
         seq, kind = self.ops()[-1]
@@ -85,7 +92,7 @@ class RecreateScope(unittest.TestCase):
         want = [("Up", changed)] if changed else []
         self.assertEqual((kind, steps[:-1]), ("deploy", [*want, ("Up", [])]), steps)  # then the identity and smoke
         self.assertEqual(steps[-1][0], "Record")
-        touched = self.touched(since)
+        touched = self.touched(w)
         self.assertEqual(sorted(touched), sorted(changed), touched)
         for s in changed:
             self.assertIn("create", touched[s])
@@ -125,11 +132,11 @@ class RecreateScope(unittest.TestCase):
 
         # the deployed commit again: nothing to do, no operation, no trace (F2)
         self.assertTrue(host.wait_gone(brand.executor_name(name)))
-        tree, inv, ops, since = host.tree_hash(H.layout.instances_dir), host.inventory(name), self.ops(), host.now()
+        tree, inv, ops, w = host.tree_hash(H.layout.instances_dir), host.inventory(name), self.ops(), self.stream()
         res = H.cli("deploy", name, c, "--json")
         self.assertEqual((res[0], jdoc(res)["code"]), (0, "nothing-to-do"), res)
         self.assertEqual((host.tree_hash(H.layout.instances_dir), host.inventory(name), self.ops()), (tree, inv, ops))
-        self.assertEqual(self.touched(since), {})
+        self.assertEqual(self.touched(w), {})
 
         self.deploy(d, ["site"])
         res = H.cli("status", name, "--json")

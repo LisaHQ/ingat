@@ -277,7 +277,19 @@ class Lab:
         ]
 
     def backup_plan(self, argv: list[str] | None = None) -> str:
+        self.fresh_second()
         return self.save("backup", self.backup_steps(argv), {"current": self.variant()})
+
+    def fresh_second(self) -> None:
+        """A bundle id carries the UTC second its backup begins and is never reused (a second backup in that second is
+        refused with bundle-exists). Two backups of one lab fit in a second on a fast runner, so wait for a second that
+        no catalogued, sealed or half-made bundle of this lab carries."""
+        dirs = [self.layout.catalog_dir(self.name), os.path.dirname(self.layout.bundle_dir(self.name, "x"))]
+        while True:
+            stamp = records.stamp(records.utc_now())
+            if not any(stamp in n for d in dirs if os.path.isdir(d) for n in os.listdir(d)):
+                return
+            time.sleep(0.1)
 
     def drill_plan(
         self, bundle_id: str, restore: list[str] | None = None, check: list[str] | None = None

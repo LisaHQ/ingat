@@ -103,7 +103,7 @@ class HostInitTest(unittest.TestCase):
         self.assertEqual((cert["kind"], cert["result"]), ("host-check", "PASS"))
         self.assertEqual(cert["build"], cx.build_facts(self.ctx))
         runc = tuple(int(x) for x in doc["versions"]["runc"].lstrip("v").split("-")[0].split(".")[:3])
-        self.assertEqual(any(r.startswith("runc ") for r in check["risks"]), runc < (1, 1, 12))
+        self.assertEqual(any("runc" in r for r in check["risks"]), runc < (1, 1, 12))
         seccomp = any("name=seccomp" in o for o in info.get("SecurityOptions") or ())
         self.assertEqual(any("seccomp" in r for r in check["risks"]), not seccomp)
 

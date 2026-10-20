@@ -31,9 +31,9 @@ def annotations(text: str, fallback: str) -> list[str]:
     out = []
     for block in blocks[:SHOWN]:
         head, _, rest = block.partition(SEP)
-        lines = [head.strip(), *rest.split(SEP)[0].strip().splitlines()[-TAIL:]]
+        lines = [*head.strip().splitlines(), *rest.split(SEP)[0].strip().splitlines()[-TAIL:]]  # name, docstring
         out.append(f"::error title={title(lines[0])}::{escape(lines)}")
-    rest_names = [block.partition(SEP)[0].strip() for block in blocks[SHOWN:]]
+    rest_names = [block.partition(SEP)[0].strip().splitlines()[0] for block in blocks[SHOWN:]]
     if rest_names:
         out.append(f"::error title={len(rest_names)} more failing tests::{escape(rest_names)}")
     return out
