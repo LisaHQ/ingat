@@ -96,12 +96,16 @@ Every named volume in the merged model must be a store. `[services]`: `data` (st
 
 | Table | Keys |
 |---|---|
-| `[backup]` | `strategy = "tasks" \| "none"`, `steps` (tasks in order), `verify` (tasks), `payload` (required top-level entry name; templated), `[backup.naming]` (per class `scheduled`, `manual`, `pre-change`, `final`; default `"{bundle.stamp}-{class}"`) |
+| `[backup]` | `strategy = "tasks" \| "none"` (Planned: `"provider"`, [ADR-0031](adr/0031-data-providers.md), implied by `[data.<name>]` when `[backup]` is absent, §2.8), `steps` (tasks in order), `verify` (tasks), `payload` (required top-level entry name; templated), `[backup.naming]` (per class `scheduled`, `manual`, `pre-change`, `final`; default `"{bundle.stamp}-{class}"`) |
 | `[restore]` | `start` (data services started on the new generation), `steps`, `post`, `checks` (tasks that must be `ok`), `activate` (start the activation groups in isolation and wait for `exec`/`health` probes). Restore tasks always run in the bundle's own release image (`LIFECYCLE.md` §4.10). |
 | `[rollback]` | `env` (env overrides for a restore-based rollback deployment; dropped by the next deploy) |
 | `[drill]` | `checks` (must be `ok`), `record` (recorded, findings allowed), `activate`, `min_free_memory`. Drills always use throwaway secrets. |
 | `[holds.<service>]` | env overrides applied in every isolated run: side-effect holds, and values a service needs to start in isolation (internal networks have no default route) |
 | `[side_effects]` | `kind = "none" \| "outbound"`, `restore_via_app`, `after_restore = "held"`, `clear_hold` (task), `single_active` (Planned M4), `restore_notice` |
+
+### 2.8 `[data.<name>]` (Planned, ADR-0031)
+
+**Planned** ([ADR-0031](adr/0031-data-providers.md), after the M2 exit gate; additive in schema 1 before the freeze, else the first schema-2 change). An app without backup, restore and verify commands of its own declares its data sets instead, and the tool's own digest-pinned provider images supply those commands as ordinary tasks. Keys per data set: `provider` (a kind that `image/providers.lock` lists), `major`, `service` (role `data`), `store`, `database`, `user`, `password = { secret = "<name>" }`, `port`, `databases` (sqlite), `exclude` (files), `ready`, `timeout`; and `[stores.<name>] backup = false` for a cache store that is never captured and recreated empty. A manifest that declares `[data.<name>]` and no `[backup]` gets `strategy = "provider"` and the `[backup]`, `[restore]` and `[drill]` tables synthesized from the lock; which keys a kind takes comes from its lock entry (`keys`). The exact grammar, defaults and validation rules are written here when slice P1 lands ([`ROADMAP.md`](ROADMAP.md) §5).
 
 ## 3. Template vocabulary (closed)
 

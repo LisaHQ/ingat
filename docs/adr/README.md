@@ -2,7 +2,7 @@
 
 Each file records one decision: its context, the decision, the alternatives considered and the consequences. The design documents ([ARCHITECTURE.md](../ARCHITECTURE.md), [LIFECYCLE.md](../LIFECYCLE.md), [MANIFEST_SPEC.md](../MANIFEST_SPEC.md), [ROADMAP.md](../ROADMAP.md)) cite these records by number.
 
-Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (the design default until the owner settles owner decision OD-n, whose options are recorded in the owner's private notes), **Superseded by ADR-NNNN** (none yet). **Accepted (revised 2026-10-14)** marks the ADRs that the owner's clarification of host scope (any host that runs Docker and Compose, not one appliance line) revised in place on the day they were accepted, before any implementation; each one's status line says what changed. From then on, rule 3 below applies without exception.
+Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (the design default until the owner settles owner decision OD-n, whose options are recorded in the owner's private notes), **Superseded by ADR-NNNN** (ADR-0010, by ADR-0031), **Superseded in part by ADR-NNNN** (one sentence of the decision replaced by the named ADR; the rest stands: ADR-0022, by ADR-0032 and ADR-0033). **Accepted (revised 2026-10-14)** marks the ADRs that the owner's clarification of host scope (any host that runs Docker and Compose, not one appliance line) revised in place on the day they were accepted, before any implementation; each one's status line says what changed. From then on, rule 3 below applies without exception.
 
 ## Index
 
@@ -17,7 +17,7 @@ Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (th
 | [0007](0007-image-identity-pinned-by-id.md) | Image identity: pinned by ID, ledger, no image removal before M3 | Accepted | Services run the recorded image ID; a write-once ledger keeps provenance. |
 | [0008](0008-filesystem-layout.md) | Filesystem layout: plain POSIX root, root-written backups root | Accepted (revised 2026-10-14) | State in a `root:root 0700` directory; bundles copied then renamed into a backups root only root writes (a shared folder on DSM). |
 | [0009](0009-app-manifest-in-app-repository.md) | The app manifest lives in the app repository; TOML; closed vocabularies | Accepted | `ingat.toml` read from the deployed commit; closed sets of steps, task modes, probes, variables. |
-| [0010](0010-one-data-strategy-app-native-tasks.md) | One data strategy in v1: app-native tasks | Accepted | Apps back up and restore with their own tasks; Ingat owns staging, sealing and verification. |
+| [0010](0010-one-data-strategy-app-native-tasks.md) | One data strategy in v1: app-native tasks | Superseded by ADR-0031 | Apps back up and restore with their own tasks; Ingat owns staging, sealing and verification. |
 | [0011](0011-data-generations-and-isolated-restores.md) | Data generations; restores and drills in isolated projects | Accepted | Restores fill a new generation in an isolated project and switch a pointer; drills use throwaway projects. |
 | [0012](0012-step-model-and-execution-semantics.md) | Step model and execution semantics | Accepted | One executor over typed steps, owned task containers, orphan check, scoped auto-abandon. |
 | [0013](0013-approval-classes-and-plan-files.md) | Approval classes A-D and plan files | Accepted, pending OD-10 | Read-only, unattended, plan-hash and terminal-only destructive classes; agents never get class D. |
@@ -29,7 +29,7 @@ Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (th
 | [0019](0019-secrets.md) | Secrets | Accepted | Secrets only as checked files, redacted everywhere, never in bundles. |
 | [0020](0020-exclusive-environments-default-refusal.md) | Exclusive environments default to refusal | Accepted, pending OD-5 | A production instance refuses to share a host with another instance of the same app. |
 | [0021](0021-testing-evidence-and-scope-guardrails.md) | Testing, evidence and scope guardrails | Accepted (revised 2026-10-14) | Real Docker on every push (an arm64 lane included), evidence only from CI and host certifications, line budgets. |
-| [0022](0022-delegated-concerns.md) | Delegated concerns | Accepted (revised 2026-10-14) | TLS, off-host copies, scheduling and notification stay with the platform's tools, outside Ingat. |
+| [0022](0022-delegated-concerns.md) | Delegated concerns | Superseded in part by ADR-0032 and ADR-0033 | TLS, off-host copies, scheduling and notification stay with the platform's tools, outside Ingat. |
 | [0023](0023-record-compatibility-within-state-schema.md) | Record compatibility within a state schema | Accepted | Additive optional record changes within a schema; anything else bumps it with a migration. |
 | [0024](0024-adoption-by-payload-import.md) | Adoption of a foreign deployment by payload import and restore, never in place | Accepted (planned M4) | Foreign deployments are adopted from the app's own backup payload; no foreign object is touched. |
 | [0025](0025-host-baseline.md) | Host support tiers and the first platform profile (Synology DSM 7.4) | Accepted (revised 2026-10-14) | Any Linux Docker host: support tier 1 (upstream Engine on CI-tested lines), support tier 2 (vendor appliances certified per platform build, Synology DSM 7.4 with Container Manager 24.0.2 first), an explicit unsupported list; capabilities, never platform branches; one multi-arch image; logging and CPU-limit rules. |
@@ -38,6 +38,9 @@ Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (th
 | [0028](0028-m1-replan-runtime-size.md) | M1 re-plan: runtime size | Accepted | M1 estimate raised from about 3,000 to about 6,600 runtime lines (stop line about 10,000); scope unchanged. |
 | [0029](0029-tested-image-and-tested-json-layer.md) | One image build per pipeline, tested by every lane, with tested.json as its final layer | Accepted | Lanes load the pipeline's per-architecture tarballs; the release adds `tested.json` as one final layer over the tested layers. |
 | [0030](0030-isolation-pool-outside-docker-default-pools.md) | The isolation subnet pool lies outside Docker's default address pools | Accepted | Default isolation pool `10.250.0.0/20` instead of `172.30.192.0/20`. |
+| [0031](0031-data-providers.md) | Data providers: tool-shipped, digest-pinned provider images declared per data set | Accepted | A second data strategy `provider`: the app declares its data sets, the tool ships pinned provider images with a public contract, expanded into ordinary tasks; a public certified catalog. |
+| [0032](0032-local-session-bound-web-view.md) | Local session-bound web view (`ingat ui`) | Accepted | A loopback-only, read-only view started by a foreground command in a CLI container without the Docker socket, no write endpoint; the non-goal becomes "a web service on the host". |
+| [0033](0033-commercial-boundary-report-and-hosted-service.md) | Commercial boundary, outbound status report, support bundle and the hosted service | Accepted | Nothing that preserves or recovers data is ever paid; an outbound `report` the owner enrols and `support-bundle`; the hosted status page is the paid product. |
 
 ## Adding an ADR
 
@@ -45,4 +48,4 @@ Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (th
 2. Take the next free number and name the file `NNNN-short-kebab-title.md`. Start with `# ADR-NNNN <Title>`, a `**Status:**` line, then the sections `Context`, `Decision`, `Alternatives` and `Consequences`.
 3. Never rewrite an accepted ADR's decision. A change is a new ADR that names the one it supersedes; the old one's status becomes `Superseded by ADR-NNNN`.
 4. Add a row to the index above in the same change, and update the design documents that cite the decision.
-5. Follow the public content rule ([CLAUDE.md](../../CLAUDE.md) §5): generic content only, no consumer names, host values or private references; describe a consumer by its role (the PostgreSQL consumer, the SQLite consumer) or by its fixture (`fx-pg`, `fx-lite`, `fx-web`).
+5. Follow the public content rule ([CLAUDE.md](../../CLAUDE.md), Architecture Rules): generic content only, no consumer names, host values or private references; describe a consumer by its role (the PostgreSQL consumer, the SQLite consumer) or by its fixture (`fx-pg`, `fx-lite`, `fx-web`).

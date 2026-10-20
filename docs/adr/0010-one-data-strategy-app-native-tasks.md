@@ -1,6 +1,6 @@
 # ADR-0010 One data strategy in v1: app-native tasks
 
-**Status:** Accepted.
+**Status:** Superseded by [ADR-0031](0031-data-providers.md) (2026-10-19): a second strategy, `provider`, joins `tasks`; the reasoning against engine code in `src/` stands.
 
 ## Context
 

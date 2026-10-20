@@ -63,6 +63,10 @@ Floors are code. No flag, manifest key, instance key or environment variable dis
 | `check [<i>]`, `schedule render <i> --systemd\|--cron\|--dsm`, `conformance --repo <dir> [--from <ref>]` | A/B | CLI/executor | M3 |
 | `import <dir> --into <i>`, `export-config <i> --to <dir>`, `host rebind` (D) | B/C/D | executor | M4 |
 | `import --payload <dir> --into <i> --release <ref> --from <name> [--id <bundle-id>] --reason TEXT` (adoption, §4.16) | B | executor | M4 |
+| `ui [--port N] [--idle MIN]` | A | CLI (a loopback listener for the session, in a container without the Docker socket) | Planned (ADR-0032, after the M2 plan hand-over slice) |
+| `report preview`, `support-bundle <i>` | A | CLI | Planned (ADR-0033) |
+| `report enroll`, `report disable` | C | CLI (host lock; no Docker change) | Planned (ADR-0033) |
+| `scheduled report` | B | CLI (writes only `host/report.json` and its cursor) | Planned (ADR-0033) |
 | `self-upgrade <version>`, `self-rollback`, `state migrate` | C | host executor | M5 |
 
 Operations agents may run class A and B freely and class C only with a plan hash the owner gave them, and never class D. The CLI cannot tell an agent from the owner: an agent that allocates a pty can type a challenge. The rule therefore holds only for agents that obey it; the agent's own tool deny rules enforce it (owner decision OD-10).
@@ -326,7 +330,7 @@ Only declared tasks. Read tasks are class B; `app-write` and `data` tasks are cl
 
 Adoption brings an app deployment that Ingat did not create (started by hand, from Container Manager or by another tool) under a new Ingat instance, **from a payload of the app's own backup command**. Ingat never touches a foreign object: it does not stop, start, exec into, mount, relabel, restore into or delete one (F8; ADR-0024). Docker cannot change the labels of an existing object, so a foreign object never becomes owned; its data moves into a new instance through an imported bundle and the restore of §4.10. Adoption reads no label, record or bundle of the earlier in-house deployment controller (ADR-0001).
 
-**Precondition.** The app has an `ingat.toml` at a release whose `restore` tasks read what the foreign deployment's backup command writes, normally the release the foreign project runs. Adoption never migrates on its own: the restore runs in the stated release, and the app's restore and checks refuse a schema that release cannot run (onboarding checklist item 2, [ARCHITECTURE.md](ARCHITECTURE.md) §11.3). An app without a backup command the owner can run against the foreign deployment waits for the deferred `cold` strategy (§5.1).
+**Precondition.** The app has an `ingat.toml` at a release whose `restore` tasks read what the foreign deployment's backup command writes, normally the release the foreign project runs. Adoption never migrates on its own: the restore runs in the stated release, and the app's restore and checks refuse a schema that release cannot run (onboarding checklist item 2, [ARCHITECTURE.md](ARCHITECTURE.md) §11.3). An app without a backup command the owner can run against the foreign deployment uses a provider ([ADR-0031](adr/0031-data-providers.md), Planned): the runbook prints the hand-run provider `backup` line that produces the payload; only an engine with no provider waits for the deferred `cold` strategy (§5.1).
 
 **Runbook** (operator guide, M4). The steps outside Ingat use the foreign project's own tooling and are the owner's; operations agents never run them (`docker` is in their deny rules: owner decision OD-10).
 
@@ -351,7 +355,8 @@ Adoption brings an app deployment that Ingat did not create (started by hand, fr
 |---|---|---|
 | `tasks` | App-native task steps inside the app's own images (both reference consumers). Ingat owns quiescence, staging, hashing, sealing, verification, retention and the drill. | Decided, M1 (the SQLite consumer), M2 (the PostgreSQL consumer) |
 | `none` | Stateless apps; backup, verify, restore and drill report "not applicable". Rollback means the previous digest or commit. | Decided, M1 |
-| `cold` | Stop the project, copy declared stores with a helper container, restore only with the same data-image ID. | Deferred; trigger: a consumer without app-native hooks, an app to adopt whose backup command the owner cannot run against its foreign deployment (§4.16), or an observed need for an emergency copy that app hooks cannot make |
+| `provider` | The app declares its data sets (`[data.<name>]`); tool-shipped, digest-pinned provider images back them up, check and restore them as ordinary tasks ([ADR-0031](adr/0031-data-providers.md)). | Planned (after M2, [ROADMAP.md](ROADMAP.md) §5) |
+| `cold` | Stop the project, copy declared stores with a helper container, restore only with the same data-image ID. | Deferred; trigger (narrowed by ADR-0031): an engine whose own data directory must be copied raw because no provider exists for it and a logical dump is impossible, or an incident in which neither app hooks nor a provider could preserve data |
 
 ### 5.2 Stores and generations
 
@@ -449,5 +454,6 @@ The host's scheduler runs every job as root without a terminal and mails the own
 | Sunday 05:00 | `/srv/ingat/bin/ingat scheduled verify lite-test --latest --restore-test` |
 | Sunday 06:00 | `/srv/ingat/bin/ingat scheduled verify pg-staging --latest --restore-test` |
 | hourly | `/srv/ingat/bin/ingat scheduled status` (exit 5 and mail only when the attention set changed, §4.15); replaced by `check` in M3 |
+| at the interval `report enroll` recorded (`interval_minutes`, default 15), only after enrolment | `/srv/ingat/bin/ingat scheduled report` (Planned, [ADR-0033](adr/0033-commercial-boundary-report-and-hosted-service.md)) |
 
 Job times stay apart: a busy lock exits 2 and is mailed, never queued. After a platform update (on a Linux host, every reboot into a new kernel) a drill exits 2 and is mailed until `selftest --host` certifies the new build, while the backups continue and skip their retention with a recorded warning ([ARCHITECTURE.md](ARCHITECTURE.md) §3.6). **Planned M3:** `ingat schedule render <i> --systemd` prints oneshot units, timers (`Persistent=true`) and an `OnFailure=` unit; `--cron` prints crontab lines as a fallback; `--dsm` prints the Task Scheduler entries to create.

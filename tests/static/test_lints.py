@@ -1,4 +1,5 @@
-"""T0 static lints over src/ (ARCHITECTURE §5.2, §10.1; CLAUDE.md §5): layering, budgets, literals, effects."""
+"""T0 static lints over src/ (ARCHITECTURE §5.2, §10.1; CLAUDE.md, Architecture Rules): layering, budgets,
+literals, effects."""
 
 import ast
 import functools

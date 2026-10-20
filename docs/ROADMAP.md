@@ -145,7 +145,7 @@ The SQLite consumer is the simplest real consumer: one container, one bind store
 
 | Item | Trigger | Earliest milestone |
 |---|---|---|
-| `cold` data strategy | A consumer without app-native backup and restore commands, an app to adopt whose backup command the owner cannot run against its foreign deployment, or an incident where app hooks could not preserve data | after M3 |
+| `cold` data strategy (narrowed by [ADR-0031](adr/0031-data-providers.md)) | An engine whose own data directory must be copied raw because no provider exists for it and a logical dump is impossible, or an incident in which neither app hooks nor a provider could preserve data; by ADR | after P2 (§5) |
 | A `docker:24.0.2-dind` lane on arm64 (the arm64 lane runs 29.x only) | An arm64 host on Engine 24.0 needs gate tier 2 ([`ARCHITECTURE.md`](ARCHITECTURE.md) §10.1) | any |
 | On-host image builds in `prepare` (with buildx in the tool image and S4's build checks; [ADR-0026](adr/0026-app-images-built-in-app-ci.md)) | An app without CI image publishing | any |
 | GET-only Engine API client | Docker CLI JSON parsing proves fragile in CI | any |
@@ -158,4 +158,23 @@ The SQLite consumer is the simplest real consumer: one container, one bind store
 | Restore in the current release (`--release current`, with a migrate step) | A consumer needs it; by ADR | after M3 |
 | Non-loopback published ports (`public_ports`) | An app must publish on a non-loopback address; by ADR | any |
 | Two-invocation preview flow with a bound output hash | A consumer whose confirm step cannot be a separate app command; by ADR | any |
-| Never | Web UI, daemon, plugins, host hooks, auto-update, TLS, multi-host, ACL management (for example DSM ACLs) | — |
+| Second version of the web view: a staged write path limited to `plan …` and `apply <hash>` with a typed name, and `ingat manifest <repo-url> <ref> --json` for the new-instance form ([ADR-0032](adr/0032-local-session-bound-web-view.md)) | The first version has run on a certified host; by ADR | after the view's first version |
+| Off-site encrypted copies as a hosted paid feature ([ADR-0033](adr/0033-commercial-boundary-report-and-hosted-service.md)): host-held keys, outbound only, recovery only through `import` | M4 `import` exists; by ADR | after M4 |
+| A read-only agent interface with plan hand-over ([ADR-0033](adr/0033-commercial-boundary-report-and-hosted-service.md)) | `plan`/`apply` (M2) exist; the owner's agents operate a host (OD-10); by ADR | after M2 |
+| Approval of an agent's plan from a phone through the hosted service (the host asks outbound; class D never) ([ADR-0033](adr/0033-commercial-boundary-report-and-hosted-service.md)) | `report` and the paid tier exist; by ADR | after S2 (§5) |
+| Never | A web service, daemon or agent on the host (the loopback-only, read-only, session-bound view of ADR-0032 is the one exception), plugins, host hooks, auto-update, TLS, multi-host, ACL management (for example DSM ACLs), and any paid, limited or tier-dependent feature that preserves or recovers data (ADR-0033) | — |
+
+## 5. Decided additions (owner, 2026-10-19)
+
+Three ADRs extend the committed scope without changing M2-M5; each slice names its consumer need: the owner requires a view for newcomers, coverage of many third-party apps, a free and a paid tier, and everyday language for non-technical users. Week estimates follow the roadmap's convention (one owner with agents, conservative); elapsed time with agents has been far shorter.
+
+| Slice | Content | When | Gate |
+|---|---|---|---|
+| U0 Plain words | Every user-facing text of the CLI, `install.sh`, `facts.sh` and the operator guide in everyday words; shared word tables in `model/words.py` | Done 2026-10-19 (commit `e0ff2ee`) | Local scratch-daemon runs only (unit, static and Docker suites); no CI verdict yet |
+| P0 Provider contract | `docs/PROVIDER_CONTRACT.md` (the public contract), `providers/postgres` and `providers/files` images, `image/providers.lock`, a provider CI lane, the reference image and the conformance kit for contributors; readers taught to tolerate an unknown bundle `consistency` ([ADR-0031](adr/0031-data-providers.md)) | Parallel with M2, about 1 week | Provider lane `PASS` on both dind tags and arm64; the upgrade suite's unknown-consistency case |
+| P1 `provider` strategy | `[data.<name>]` in the manifest (additive in schema 1), `model/providers.py` expansion from the lock, the override service, additive records, the stop-evidence helper beside `ops/steps_build.py`, planner changes, the `fx-prov` fixture; the catalog repository with its first two entries | After the M2 exit gate, about 2.5-3 weeks | No-trace, regenerated crash matrix (with `unclean-stop`), session loss, secret canary, readiness, isolation, recreate scope (`[data]` added or removed leaves live containers), generation safety and upgrade suites `PASS` in CI; one real host certification |
+| P2 Providers, second part | `sqlite`, `mariadb`, `mysql` images; `online-provider` consistency; mixed mode; entry states, the digest-bump job, `catalog.json`; eight more entries | After P1, about 2.5-3 weeks | Nightly conformance per entry |
+| R0 Report and support bundle | The `ops/doctor.py` split first, if U1 has not done it; `report enroll` and `report disable` (class C), `report preview`, `scheduled report`, `support-bundle`, `adapters/http_out.py`, `cli/commands_report.py`, `TRADEMARKS.md`, `docs/LICENSING.md`, `docs/REPORT_PROTOCOL.md` ([ADR-0033](adr/0033-commercial-boundary-report-and-hosted-service.md)) | With M2 or M3, about 2.5 weeks | No-trace, secret canary (a redirecting receiver never sees the token), payload-shape and upgrade suites `PASS` in CI |
+| U1-U4 Web view, first version | The `ops/doctor.py` split first; then the wrapper's `ui` branch without the socket, `cli/commands_ui.py`, server, API over the records on disk, views, composer, offline asset, docs in two languages ([ADR-0032](adr/0032-local-session-bound-web-view.md)) | After the M2 plan hand-over slice, about 4-4.5 weeks | No-trace view case, no-socket test, Recover-equals-`next` on the crash matrix, secret canary `PASS` in CI; one owner walk-through on a certified host |
+| S1 Hosted service, free tier | Receiver, console, dead-man email, quiet hours; deployed by Ingat on the owner's host, which yields the M4 slice 12 certification | After M3, about 4 weeks | — |
+| S2 Hosted service, paid tier | Alerts, billing; then the deferred items above, each by its own ADR | After S1, about 2 weeks | — |
