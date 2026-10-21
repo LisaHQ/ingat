@@ -41,19 +41,27 @@ jobs:
       - run: ruff check src tests fixtures
       - run: mypy
       - name: static lints (consumer names come from a secret; skipped without it)
-        run: python -m unittest discover -s tests/static -t . -v
+        id: static
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests/static -t . -v 2>&1 | tee "$RUNNER_TEMP/static.log"
         env:
           PYTHONPATH: src
           INGAT_FORBIDDEN_NAMES: ${{ secrets.INGAT_FORBIDDEN_NAMES }}
       - name: unit tests
+        id: unit
         run: |
           set -o pipefail
           python -m unittest discover -s tests/unit -t . -v 2>&1 | tee "$RUNNER_TEMP/unit.log"
         env:
           PYTHONPATH: src
-      # The logs of a public repository need a sign-in; annotations do not, so the run page names what failed.
+      # The logs of a public repository need a sign-in; annotations do not, so the run page names what failed. The
+      # consumer-name lint reports a name by its number in the secret's list and masks it in paths, never the name.
+      - name: failing static lints as annotations
+        if: failure() && steps.static.outcome == 'failure'
+        run: python3 tests/harness/annotate.py "$RUNNER_TEMP/static.log" "static lints"
       - name: failing unit tests as annotations
-        if: failure()
+        if: failure() && steps.unit.outcome == 'failure'
         run: python3 tests/harness/annotate.py "$RUNNER_TEMP/unit.log" "unit tests"
 
   # The image is built once (ADR-0029): one buildx build of both architectures writes an OCI layout whose index digest
