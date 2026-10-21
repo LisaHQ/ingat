@@ -43,7 +43,6 @@ H: host.ScratchHost
 NAME = f"its{secrets.token_hex(3)}"
 EXEC = brand.executor_name(NAME)
 A = ""  # the one commit of the fixture repository
-CLOSE_SLACK_NS = 100_000_000  # the close-time slack of SessionLoss.cancelled
 
 
 def setUpModule() -> None:
@@ -220,16 +219,16 @@ class SessionLoss(unittest.TestCase):
         kills = [e["Actor"]["Attributes"].get("signal") for e in evs if e["Action"] == "kill"]
         self.assertEqual(kills, [str(int(s)) for s in sigs], evs)
         self.assertEqual([e["Actor"]["Attributes"]["exitCode"] for e in evs if e["Action"] == "die"], ["3"], evs)
-        # The close is result.json's mtime, which the kernel stamps from its coarse clock (up to a tick behind), and
-        # the daemon logs a container's `die` just after `docker stop` has returned: CLOSE_SLACK_NS covers both. A
-        # container the executor failed to stop outlives the close by seconds (these tasks sleep for minutes).
+        # Only this instance's containers: the stream sees the whole daemon, and parallel suites run operations of
+        # their own instances with the same sequence numbers.
         closed = os.stat(self.op(seq, kind, "result.json")).st_mtime_ns
+        mine = {brand.label("instance"): NAME, brand.label("op"): str(seq)}
         for e in w.events():
             attrs = e.get("Actor", {}).get("Attributes", {})
-            if e.get("Type") == "container" and e["Action"] == "die" and attrs.get(brand.label("op")) == str(seq):
+            if e.get("Type") == "container" and e["Action"] == "die" and mine.items() <= attrs.items():
                 late = (int(e["timeNano"]) - closed) / 1e6
                 why = f"{attrs.get('name')} died {late:.1f} ms after the close"
-                self.assertLessEqual(int(e["timeNano"]), closed + CLOSE_SLACK_NS, why)
+                self.assertLessEqual(int(e["timeNano"]), closed, why)
         self.left_nothing(seq)
         rec = H.record(NAME)
         self.assertEqual((rec["open_op"], rec["state"], rec["last_op"]["seq"]), (None, "running", seq), rec)

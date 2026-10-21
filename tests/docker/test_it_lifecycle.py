@@ -147,8 +147,9 @@ class Lifecycle(unittest.TestCase):
             return hits[0]
 
         role, service = brand.label("role"), {"com.docker.compose.project": name, "com.docker.compose.service": "app"}
-        tasks_made = [first("create", {role: "task", brand.label("op"): str(seq), brand.label("step"): str(n)})
-                      for n in tasks]  # fmt: skip
+        # this instance only: parallel suites share the daemon, with operations numbered like these
+        task = {role: "task", brand.label("instance"): name, brand.label("op"): str(seq)}
+        tasks_made = [first("create", task | {brand.label("step"): str(n)}) for n in tasks]
         live = service | {"com.docker.compose.oneoff": "False"}
         return [first("die", {"name": f"{name}-app-1"}), *tasks_made, first("create", live)]
 
