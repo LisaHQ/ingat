@@ -101,6 +101,18 @@ class CoreTest(LabTest):
         self.assertEqual(sorted(os.listdir(d)), ["SHA256SUMS", "bundle.json", "meta", "payload"])
         self.assertEqual([x for x in os.listdir(os.path.dirname(d)) if x.startswith(".")], [])
 
+    def test_a_backup_whose_id_this_second_holds_takes_the_next_second(self) -> None:
+        """A half-made bundle holds the id of the second the backup starts in: the capture waits for the next second
+        instead of refusing, and leaves that bundle alone. When the begin step only runs in the next second anyway,
+        the outcome is the same."""
+        lab = self.lab
+        held = f"{records.stamp(records.utc_now())}-manual"
+        os.makedirs(path := lab.layout.incoming_dir(lab.name, held))
+        self.addCleanup(shutil.rmtree, path)
+        _, bid = self.backup()
+        self.assertGreater(bid, held)
+        self.assertEqual(os.listdir(path), [])
+
     def test_drill_runs_isolated_and_tears_down(self) -> None:
         lab = self.lab
         _, bid = self.backup()

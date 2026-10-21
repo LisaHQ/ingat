@@ -36,12 +36,11 @@ import subprocess
 import tempfile
 import time
 import urllib.request
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
 from ingat import __version__, brand
-from ingat.model import records
 from ingat.store import state
 
 REPO = Path(__file__).resolve().parents[2]
@@ -364,7 +363,6 @@ class ScratchHost:
     def cli(self, *args: str, tty: bool = False, answer: str | None = None, env: Mapping[str, str] | None = None,
             timeout: float = 900) -> Result:  # fmt: skip
         """`sh <root>/bin/ingat <args>`: (exit, stdout, stderr); on a pty stdout holds both streams."""
-        self.fresh_second(args)
         return run(["sh", self.wrapper, *args], tty=tty, answer=answer, env=env, timeout=timeout)
 
     def cli_direct(self, *args: str, env: Mapping[str, str], tty: bool = False, answer: str | None = None,
@@ -375,7 +373,6 @@ class ScratchHost:
         anchor = '"$INGAT_IMAGE" "$@"'
         if text.count(anchor) != 1:
             raise AssertionError(f"{self.wrapper}: the image argument is not where the harness expects it")
-        self.fresh_second(args)
         extra = "".join(f"-e {shlex.quote(f'{k}={v}')} " for k, v in env.items())
         path = f"{self.base}/direct-{secrets.token_hex(4)}.sh"
         Path(path).write_text(text.replace(anchor, extra + anchor))
@@ -383,25 +380,6 @@ class ScratchHost:
             return run(["sh", path, *args], tty=tty, answer=answer, timeout=timeout)
         finally:
             os.remove(path)
-
-    def fresh_second(self, args: Sequence[str]) -> None:
-        """Before `backup <i>` or `scheduled backup <i>`: a bundle id carries the UTC second its backup begins and is
-        never reused (a second backup of the instance in that second is refused, bundle-exists). Two backups of one
-        instance fit in a second on a fast runner, so wait for a second no catalogued, sealed or half-made bundle of
-        the instance carries."""
-        words = [a for a in args if not a.startswith("-")]
-        if words[:1] == ["backup"] and len(words) > 1:
-            name = words[1]
-        elif words[:2] == ["scheduled", "backup"] and len(words) > 2:
-            name = words[2]
-        else:
-            return
-        dirs = [self.layout.catalog_dir(name), os.path.dirname(self.layout.bundle_dir(name, "x"))]
-        while True:
-            stamp = records.stamp(records.utc_now())
-            if not any(stamp in n for d in dirs if os.path.isdir(d) for n in os.listdir(d)):
-                return
-            time.sleep(0.1)
 
     def certify(self) -> None:
         """`host init` (class C, the host name typed on a pty), this runner's isolation pool, then `selftest --host`,

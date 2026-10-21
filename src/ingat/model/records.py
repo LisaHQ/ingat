@@ -3,7 +3,7 @@
 import hashlib
 import json
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from ingat.model.errors import CannotRun, Refused
@@ -11,6 +11,7 @@ from ingat.model.errors import CannotRun, Refused
 STATE_SCHEMA = 1
 ISO = "%Y-%m-%dT%H:%M:%SZ"
 STAMP = "%Y%m%dT%H%M%SZ"
+SECOND = timedelta(seconds=1)  # the step of STAMP: a bundle id's stamp changes once a second (LIFECYCLE §5.4)
 
 
 def dumps(doc: object) -> bytes:

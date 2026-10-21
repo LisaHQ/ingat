@@ -1,6 +1,6 @@
 """Retention input of ops/backup.py (LIFECYCLE §5.6): catalogued bundles minus tombstones, verification levels from
 the JSON Lines records (newest per level, bound to the bundle hash), pins from deployments and open operations; plus
-the drill's memory reading and the usage refusals."""
+the plan-time bundle id check, the drill's memory reading and the usage refusals."""
 
 import tempfile
 import unittest
@@ -110,6 +110,38 @@ class RetentionInputTest(unittest.TestCase):
         with self.assertRaises(Refused) as cm:
             backup._retention(ctx, ld)  # type: ignore[arg-type]
         self.assertEqual(cm.exception.code, "clock")
+
+
+class NamingTest(unittest.TestCase):
+    """Plan time (LIFECYCLE §5.4): an id taken in this second is fine while the next second's id is free, which the
+    executor waits for; refused when that one is taken too or when the id does not change with the second."""
+
+    def setUp(self) -> None:
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.lay = Layout(f"{d.name}/root", f"{d.name}/backups")
+        self.now = datetime.fromisoformat("2026-10-20T01:02:03Z")
+
+    def naming(self, template: str, *taken: str) -> None:
+        for bid in taken:
+            fs.write_once(self.lay.catalog("i", bid), b"{}")
+        ctx = SimpleNamespace(layout=self.lay, now=self.now)
+        m = SimpleNamespace(backup=SimpleNamespace(naming={"manual": template}, payload=None))
+        backup._naming(ctx, "i", m, {}, "manual")  # type: ignore[arg-type]
+
+    def test_an_id_taken_only_in_this_second_plans(self) -> None:
+        self.naming("{bundle.stamp}-{class}")
+        self.naming("{bundle.stamp}-{class}", "20261020T010203Z-manual")
+
+    def test_an_id_that_waiting_would_not_free_is_refused(self) -> None:
+        for template, taken in (
+            ("{bundle.stamp}-{class}", ("20261020T010203Z-manual", "20261020T010204Z-manual")),
+            ("nightly-{class}", ("nightly-manual",)),
+        ):
+            with self.subTest(template), self.assertRaises(Refused) as cm:
+                self.naming(template, *taken)
+            self.assertEqual(cm.exception.code, "bundle-exists")
+            self.assertIn("never overwritten", cm.exception.message)
 
 
 class HelperTest(unittest.TestCase):

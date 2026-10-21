@@ -4,6 +4,8 @@
 import dataclasses
 import os
 import stat
+import time
+from datetime import UTC, datetime
 from typing import Any
 
 from ingat import brand
@@ -228,26 +230,43 @@ def capture(op: Op, step: Step, t: EffectToken) -> dict[str, Any]:
 
 
 def _begin(op: Op, a: dict[str, Any]) -> dict[str, Any]:
-    """Choose the bundle id and stamp and make the stage, owned by the backup tasks' user."""
+    """Choose the bundle id and stamp and make the stage, owned by the backup tasks' user. An id that is taken but
+    renders differently a second later waits once, under a second, for that second (LIFECYCLE §5.4): one operation per
+    instance, so what holds it is the instance's previous capture, begun in this same second."""
     now = records.utc_now()
-    stamp = records.stamp(now)
-    base = op.variant(a["variant"]).get("values", {}) if a.get("variant") else {}
-    values = {**base, **op.values(), "bundle.stamp": stamp, "class": a["class"]}
-    bid = templates.render(a["naming"], values)
-    if not ID_RE.fullmatch(bid):
-        why = f"The backup copy name {bid!r} is not allowed: it must match the pattern {ID_RE.pattern}."
-        raise Refused(why, code="bundle-id")
-    paths = (op.layout.catalog, op.layout.bundle_dir, op.layout.incoming_dir)
-    if any(fs.exists(p(op.name, bid)) for p in paths):
+    bid, values = _named(op, a, now)
+    if _taken(op, bid) and _named(op, a, later := now + records.SECOND)[0] != bid:
+        time.sleep(max(0.0, (later - datetime.now(UTC)).total_seconds()))
+        now = records.utc_now()
+        bid, values = _named(op, a, now)
+    if _taken(op, bid):
         why = (
             f"A backup copy named {bid} already exists (or one by that name was left half made), and an existing "
-            "backup copy is never overwritten. The operation stops here."
+            "backup copy is never overwritten. Waiting would not give a new name: the app's name for these backups "
+            "does not change with the time, or this computer's clock was turned back. The operation stops here."
         )
         raise Refused(why, code="bundle-exists")
+    stamp = values["bundle.stamp"]
     payload = templates.render(a["payload"], {**values, "bundle.id": bid}) if a.get("payload") else None
     fs.make_empty_dir(op.path("stage"), 0o700, _owner(a.get("stage_owner")))
     out = {"bundle.id": bid, "bundle.stamp": stamp, **({"bundle.payload": payload} if payload else {})}
     return {"bundle_id": bid, "stamp": stamp, "created_at": records.iso(now), "payload": payload, "values": out}
+
+
+def _named(op: Op, a: dict[str, Any], at: datetime) -> tuple[str, dict[str, str]]:
+    """The bundle id the naming template renders for a capture that begins at `at`, and the values it used."""
+    base = op.variant(a["variant"]).get("values", {}) if a.get("variant") else {}
+    values = {**base, **op.values(), "bundle.stamp": records.stamp(at), "class": a["class"]}
+    bid = templates.render(a["naming"], values)
+    if not ID_RE.fullmatch(bid):
+        why = f"The backup copy name {bid!r} is not allowed: it must match the pattern {ID_RE.pattern}."
+        raise Refused(why, code="bundle-id")
+    return bid, values
+
+
+def _taken(op: Op, bid: str) -> bool:
+    paths = (op.layout.catalog, op.layout.bundle_dir, op.layout.incoming_dir)
+    return any(fs.exists(p(op.name, bid)) for p in paths)
 
 
 def _seal(op: Op, a: dict[str, Any]) -> dict[str, Any]:

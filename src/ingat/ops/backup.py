@@ -260,15 +260,19 @@ def _writers(ctx: Ctx, ld: Loaded, m: Manifest) -> list[str]:
 
 
 def _naming(ctx: Ctx, name: str, m: Manifest, values: dict[str, str], klass: str) -> None:
-    """The bundle id and payload must render now to an unused id (LIFECYCLE §5.4); the executor renders them again."""
+    """The bundle id and payload must render now to an id that is unused now or a second later, which the executor
+    then waits for (LIFECYCLE §5.4); the executor renders them again."""
     values = values | {"bundle.stamp": records.stamp(ctx.now), "class": klass}
     bid = templates.render(m.backup.naming[klass], values)
     if not ID_RE.fullmatch(bid):
         raise Refused(f"backup.naming.{klass} renders {bid!r}, which is not a bundle id", code="bundle-id")
     if m.backup.payload:
         templates.render(m.backup.payload, values | {"bundle.id": bid})
-    if fs.exists(ctx.layout.catalog(name, bid)):
-        raise Refused(f"bundle id {bid} is already used", code="bundle-exists")
+    later = templates.render(m.backup.naming[klass], values | {"bundle.stamp": records.stamp(ctx.now + records.SECOND)})
+    if all(fs.exists(ctx.layout.catalog(name, b)) for b in {bid, later}):  # one id when it has no {bundle.stamp}
+        why = f"a backup copy named {bid} already exists, and an existing backup copy is never overwritten; waiting "
+        why += "would not give a new name: the app's name for these backups does not change with the time, or this "
+        raise Refused(why + "computer's clock was turned back", code="bundle-exists")
 
 
 def _pick(ctx: Ctx, ld: Loaded, bundle: str | None) -> tuple[str, dict[str, Any]]:
