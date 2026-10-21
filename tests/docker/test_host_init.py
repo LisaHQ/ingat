@@ -21,6 +21,7 @@ from ingat.ops import context as cx
 from ingat.ops import host, instance
 from ingat.policy import gate
 from ingat.store import state
+from tests.harness import host as harness
 
 IMAGE = os.environ.get("INGAT_TEST_IMAGE", "ingat:dev")
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "fx-lite"
@@ -143,7 +144,7 @@ class HostInitTest(unittest.TestCase):
         docker(*compose, "down")
 
         # A port another container publishes on the daemon.
-        port = str(29000 + int.from_bytes(os.urandom(2)) % 1000)
+        port = str(harness.free_port())  # held by this runner: no other runner's instance publishes or draws it
         cid = docker("create", "-p", f"127.0.0.1:{port}:3000", IMAGE, "true").strip()
         self.addCleanup(subprocess.run, ["docker", "rm", cid], capture_output=True, check=False)
         write(FXLITE_PORT=port)

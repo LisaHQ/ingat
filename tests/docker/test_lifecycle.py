@@ -89,6 +89,15 @@ def tree(path: str) -> dict[str, str]:
     return out
 
 
+def content(p: Path) -> bytes:
+    """The bytes of `p`, or none when it went after it was listed: the running app's SQLite -wal and -shm files come
+    and go on their own."""
+    try:
+        return p.read_bytes()
+    except FileNotFoundError:
+        return b""
+
+
 @unittest.skipIf(SKIP, "needs a scratch Docker daemon")
 class LifecycleTest(unittest.TestCase):
     environ: dict[str, str]
@@ -275,7 +284,7 @@ class LifecycleTest(unittest.TestCase):
         code = i["printed"].strip().splitlines()[-1].encode()  # the single-use code reached the terminal only
         self.assertGreater(len(code), 10)
         files = [p for p in Path(self.base).rglob("*") if p.is_file() and not p.is_symlink()]
-        self.assertEqual([p for p in files if code in p.read_bytes()], [])
+        self.assertEqual([p for p in files if code in content(p)], [])
         self.assertEqual((i["resume"][0], i["resume"][1]["code"]), (0, "completed"), i["resume"])
         self.assertEqual(self.result(seq, "deploy")["outcome"], "completed")
         rec = self.record()

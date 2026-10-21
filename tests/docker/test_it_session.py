@@ -553,7 +553,9 @@ class SessionLoss(unittest.TestCase):
         which blocks resume and abandon until it ends (ARCHITECTURE §4.3, §4.5). Then `status` names the command that
         goes on, and that command converges (LIFECYCLE §3.2, §3.4)."""
         seq = state.next_seq(H.layout, NAME)
-        p = self.spawn("task", NAME, "slow-terminal", "--arg", "seconds=15", tty=True)
+        # The task must outlast the two refusals below (each a CLI container and two inventories) on a loaded runner,
+        # then end by itself: a long one stopped by hand would make the closing resume, which runs it again, as long.
+        p = self.spawn("task", NAME, "slow-terminal", "--arg", "seconds=40", tty=True)
         _, task = self.in_task(p, seq, "task")
         p.wait_for("waiting")
         [cli] = self.cli_containers()

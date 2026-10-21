@@ -10,11 +10,11 @@ INGAT_TEST_OVERLAY_SRC=1 (the local dev runner) it first overlays the current so
 
 Several suite processes may share one scratch daemon, while a real host has one tool root per daemon. So each process
 gets its own image tags, release tarball, registry (on an ephemeral port) and scratch roots; instances get explicit
-random ports above the selftest's (the lowest free ones); and `certify` holds a daemon-wide lock around
-`selftest --host`, whose host executor has one fixed name per daemon and which allocates the lowest free ports. An
-executor allocates an isolation /24 by the allocation entries of its own root and the daemon's networks, so two drills
-of different roots on one daemon could take the same /24: every process draws from an isolation pool of its own
-(`own_pool`), which `certify` records in the host's host.json right after `host init`.
+random ports above the selftest's (the lowest free ones), each held by one runner (`free_port`); and `certify` holds a
+daemon-wide lock around `selftest --host`, whose host executor has one fixed name per daemon and which allocates the
+lowest free ports. An executor allocates an isolation /24 by the allocation entries of its own root and the daemon's
+networks, so two drills of different roots on one daemon could take the same /24: every process draws from an
+isolation pool of its own (`own_pool`), which `certify` records in the host's host.json right after `host init`.
 """
 
 import atexit
@@ -241,17 +241,30 @@ def own_pool() -> str:
     return str(_POOL[0])
 
 
+_HELD: list[Any] = []  # the open lock files that hold this process's ports
+
+
 def free_port() -> int:
-    """A random port in PORTS that no container of the daemon publishes, nothing listens on and no scratch root has
-    allocated (`init` refuses a port another instance holds, running or not)."""
+    """A random port in PORTS that no container of the daemon publishes, nothing listens on, no scratch root has
+    allocated (`init` refuses a port another instance holds, running or not) and no runner of this daemon drew: a
+    port shows only seconds after its draw, so each draw holds its lock file under the shared /srv until this process
+    exits (as own_pool), and a draw of another runner, or a later one of this process, skips it."""
     used = {Path(p).name[5:-5] for p in Path(SRV).glob("*/root/host/allocations/port-*.json")}
     for c in inspect("container", docker("ps", "-aq", "--no-trunc").split()):
         used |= {b.get("HostPort") for bs in (c["HostConfig"].get("PortBindings") or {}).values() for b in bs or ()}
     while True:
         port = PORTS.start + secrets.randbelow(len(PORTS))
         with socket.socket() as s:
-            if str(port) not in used and s.connect_ex(("127.0.0.1", port)) != 0:
-                return port
+            if str(port) in used or s.connect_ex(("127.0.0.1", port)) == 0:
+                continue
+        f = open(f"{SRV}/.it-port-{port}.lock", "a")  # noqa: SIM115 - held open for the life of the process
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)  # per open file: this process's own draws exclude too
+        except BlockingIOError:
+            f.close()
+            continue
+        _HELD.append(f)
+        return port
 
 
 # ---------------------------------------------------------------- observation

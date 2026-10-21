@@ -223,7 +223,11 @@ class Lifecycle(unittest.TestCase):
                 for f in files:
                     p = os.path.join(d, f)
                     if not os.path.islink(p):
-                        self.assertNotIn(code.encode(), Path(p).read_bytes(), p)
+                        try:
+                            data = Path(p).read_bytes()
+                        except FileNotFoundError:  # the running app's SQLite -wal or -shm file went meanwhile
+                            continue
+                        self.assertNotIn(code.encode(), data, p)
 
         out = self.run_tty("resume", name, answer=name)
         rec = H.record(name)
@@ -309,7 +313,7 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(ready, {"status": "ready", "data_writable": True, "schema": {"expected": 2, "actual": 2}})
         res = H.cli("backup", name, "--json")
         self.assertEqual(res[0], 0, res)
-        b3 = max(self.bundles(name), key=lambda x: str(x["created_at"]))["id"]
+        b3 = max(self.bundles(name), key=lambda x: str(x["created_at"]))
 
         # a config-only change: the owner edits a plain app_env value; exactly the service it changes is recreated
         Path(H.layout.inst_toml(name)).write_text(Path(H.layout.inst_toml(name)).read_text() + 'SESSION_HOURS = "12"\n')
@@ -334,11 +338,18 @@ class Lifecycle(unittest.TestCase):
             res = H.cli("scheduled", "backup", name)
             self.assertEqual((res[0], res[2]), (0, ""), res)
             self.assertRegex(res[1], rf"\Ascheduled backup {name}: completed \(operation [0-9]+\)\n\Z")
-        ids = [x["id"] for x in self.bundles(name)]
-        self.assertEqual(len(ids), 4, ids)
-        self.assertNotIn(b3, ids)
-        self.assertFalse(os.path.exists(H.layout.bundle_dir(name, b3)))
-        self.assertTrue(os.path.exists(H.layout.catalog(name, f"{b3}.pruned")))
+        rows = self.bundles(name)
+        ids = [x["id"] for x in rows]
+        # the daily window keeps the newest verified bundle of each UTC day (created_at is UTC, the day its first 10
+        # characters): b3 shares the first scheduled bundle's day unless 00:00 UTC passed between the two backups
+        s1_at = min(str(x["created_at"]) for x in rows if x["class"] == "scheduled")
+        if s1_at[:10] == str(b3["created_at"])[:10]:
+            self.assertEqual(len(ids), 4, ids)
+            self.assertNotIn(b3["id"], ids)
+            self.assertFalse(os.path.exists(H.layout.bundle_dir(name, b3["id"])))
+            self.assertTrue(os.path.exists(H.layout.catalog(name, f"{b3['id']}.pruned")))
+        else:  # the newest of its own day: kept, and nothing is deleted
+            self.assertEqual((len(ids), b3["id"] in ids), (5, True), ids)
         self.assertIn(second["pre_change_bundle"], ids)  # paired with the previous deployment
 
         # scheduled status: the codes it reported are cleared; a second run finds nothing new and prints nothing

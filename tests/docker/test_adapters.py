@@ -115,7 +115,6 @@ class AdapterTest(unittest.TestCase):
             self.assertNotIn(SECRET, cm.exception.message)
 
     def test_service_lifecycle(self) -> None:
-        since = f"{time.time() - 1:.6f}"
         r = self.c.up(token(), self.p, ["app"], timeout=120)
         self.assertEqual(r.code, 0, r.err)
         [ps] = self.c.ps(self.p)
@@ -133,10 +132,14 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(self.d.probe_exec(name, ["python3", "-c", "raise SystemExit(5)"], 30).code, 5)
         self.assertTrue(eventually(lambda: "greeting=hi-there" in self.d.logs(name, tail=5).out))
 
+        # The stop's own events, the newest of the window: a replay of the daemon's buffer (its newest few hundred
+        # events, shared with the parallel suites) may have lost the start by now. `stop` is logged before the stop
+        # call returns, `die` under the container's lock, which the inspect waits for.
+        since = f"{time.time() - 1:.6f}"
         self.assertEqual(self.c.stop(token(), self.p, ["app"], timeout=60).code, 0)
         self.assertEqual(self.d.containers(project=self.u)[0]["State"]["Status"], "exited")
         events = self.d.events(since, f"{time.time():.6f}", [f"label={brand.label('instance')}={self.u}"])
-        self.assertLessEqual({"start", "die"}, {e["Action"] for e in events if e["Actor"]["ID"] == c["Id"]})
+        self.assertLessEqual({"die", "stop"}, {e["Action"] for e in events if e["Actor"]["ID"] == c["Id"]})
         self.d.remove_container(token(), c["Id"])
         self.d.remove_container(token(), c["Id"])  # already gone: no error
         self.assertEqual(self.d.containers(project=self.u), [])
@@ -229,10 +232,9 @@ class AdapterTest(unittest.TestCase):
         self.assertGreater(time.monotonic() - start, 1.0)
         for _ in range(5):  # immediate reuse of the name of a container that just exited
             self.d.launch_executor(args=["0"], **kw)
-        with mock.patch.object(docker_mod, "NAME_WAIT", 1.0):
-            self.d.launch_executor(args=["60"], **kw)
-            with self.assertRaises(CannotRun) as cm:
-                self.d.launch_executor(args=["0"], **kw)
+        self.d.launch_executor(args=["60"], **kw)  # the full wait: the last one above may still be going away
+        with mock.patch.object(docker_mod, "NAME_WAIT", 1.0), self.assertRaises(CannotRun) as cm:
+            self.d.launch_executor(args=["0"], **kw)
         self.assertEqual(cm.exception.code, "executor-running")
         self.d.stop(token(), name, 1)
         self.assertTrue(eventually(lambda: not self.d.inspect("container", [name])))

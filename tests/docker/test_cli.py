@@ -26,6 +26,7 @@ from ingat import __version__, brand
 from ingat.model import records
 from ingat.ops import context as cx
 from ingat.store import state
+from tests.harness import background
 from tests.harness import host as harness
 
 IMAGE = os.environ.get("INGAT_TEST_IMAGE", "ingat:dev")
@@ -222,7 +223,8 @@ class CliTest(unittest.TestCase):
         self.assertEqual((tree(self.lay.instances_dir), sorted(os.listdir(self.lay.plans_dir))), (before, plans))
         self.assertEqual(docker("ps", "-aq", "--filter", f"label={brand.label('instance')}={self.name}"), "")
 
-        since = f"{time.time():.6f}"
+        w = background.EventStream()  # the prepare executor's create opens a window as long as the deploy
+        self.addCleanup(w.close)
         code, text = self.run_tty("deploy", self.name, self.commit, answer=self.name)
         self.assertEqual(code, 4, text)  # paused at the install pause
         self.assertIn("preparing", text)
@@ -230,12 +232,11 @@ class CliTest(unittest.TestCase):
         self.assertIn(f"next: {brand.CLI} resume {self.name}", text)
         self.assertEqual(state.read_doc(f"{self.lay.op_dir(self.name, 1, 'prepare')}/result.json", "result")["exit"], 0)
         self.assertEqual(self.record()["open_op"]["kind"], "deploy")
-        # Scoped to this instance, so executors of other test processes on the shared daemon never count.
-        filters = ["type=container", "event=create", f"label={brand.label('instance')}={self.name}"]
-        events = docker("events", "--since", since, "--until", f"{time.time():.6f}", "--format", "{{json .}}",
-                        *(p for f in filters for p in ("--filter", f)))  # fmt: skip
-        made = [json.loads(e)["Actor"]["Attributes"] for e in events.splitlines()]
-        execs = [a for a in made if a.get(brand.label("role")) == "exec"]
+        # Streamed: a replay of the daemon's buffer (its newest few hundred events) loses that first create once the
+        # parallel suites have logged more. Scoped to this instance, so executors of other test processes never count.
+        mine = {brand.label("instance"): self.name, brand.label("role"): "exec"}
+        made = [e["Actor"]["Attributes"] for e in w.events() if e.get("Action") == "create"]
+        execs = [a for a in made if mine.items() <= a.items()]
         self.assertEqual([a["name"] for a in execs], [brand.executor_name(self.name)] * 2)  # prepare, then deploy
         # --rm: the follower returns on the run file, so the executor may still be exiting; the daemon removes it then
         self.assertTrue(harness.wait_gone(brand.executor_name(self.name), 240))

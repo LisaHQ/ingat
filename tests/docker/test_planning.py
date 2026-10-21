@@ -12,6 +12,7 @@ free space is measured; here a directory under the scratch root stands in for it
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -49,6 +50,7 @@ GIT_ENV = {
 }
 APP_ENV = {"ALLOWED_ORIGINS": "http://127.0.0.1", "BASE_URL": "http://127.0.0.1", "MAIL_SENDER": "fx@example.invalid"}
 APP_ENV["PROXY_ADDRESS"] = "127.0.0.1"
+GEN = re.compile(r"data/[^/]+/[^/]+/[gt][0-9]+")  # a bind-store generation: the app's own content
 
 
 def token() -> EffectToken:
@@ -60,7 +62,8 @@ def docker(*args: str, stdin: bytes | None = None) -> str:
 
 
 def tree(path: str, skip: str = "") -> dict[str, tuple[int, str]]:
-    """Mode and content hash of every entry below `path`, but the top-level `skip` tree."""
+    """Mode and content hash of every entry below `path`, but the top-level `skip` tree; a bind-store generation is
+    listed without its content, which a running app changes on its own (its SQLite -wal and -shm files come and go)."""
     out = {}
     for top, dirs, files, _ in os.fwalk(path):
         dirs[:] = [d for d in dirs if top != path or d != skip]
@@ -69,6 +72,7 @@ def tree(path: str, skip: str = "") -> dict[str, tuple[int, str]]:
             st = os.lstat(p)
             digest = hashlib.sha256(Path(p).read_bytes()).hexdigest() if name in files else ""
             out[os.path.relpath(p, path)] = (st.st_mode, digest)
+        dirs[:] = [d for d in dirs if not GEN.fullmatch(os.path.relpath(os.path.join(top, d), path))]
     return out
 
 
@@ -533,7 +537,7 @@ class PlanningTest(unittest.TestCase):
         assert plan is not None
         self.assertEqual(self.types(plan), ["Obtain"])
         self.assertEqual(plan.steps[0].args["images"], [{"ref": digest, "services": ["app"], "check_labels": {}}])
-        port = str(29000 + int.from_bytes(os.urandom(2)) % 900)
+        port = str(harness.free_port())  # held by this runner: no other runner's instance publishes or draws it
         self.ghost(
             "web", "-p", f"127.0.0.1:{port}:3000", **{brand.label("instance"): "x", "com.docker.compose.project": "x"}
         )

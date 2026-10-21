@@ -78,7 +78,11 @@ class CoreTest(LabTest):
             for f in files:
                 path = os.path.join(d, f)
                 if not path.startswith((lab.layout.secrets_dir(lab.name), lab.layout.env_dir(lab.name))):
-                    self.assertNotIn(lab.secret.encode(), Path(path).read_bytes(), path)
+                    try:
+                        data = Path(path).read_bytes()
+                    except FileNotFoundError:  # a running app's own temporary file (SQLite -shm, -wal) went meanwhile
+                        continue
+                    self.assertNotIn(lab.secret.encode(), data, path)
 
     def test_backup_seals_and_verifies(self) -> None:
         lab = self.lab

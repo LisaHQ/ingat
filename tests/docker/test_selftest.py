@@ -55,6 +55,10 @@ def listing(path: str) -> list[str]:
 @unittest.skipUnless(os.path.exists(SOCK), "needs a scratch Docker daemon")
 class SelftestTest(unittest.TestCase):
     def setUp(self) -> None:
+        # The daemon-wide lock `certify` of the integration harness holds, until close() has run (cleanups run last in,
+        # first out): every selftest takes the lowest free names and ports of the daemon, so another runner's selftest
+        # would reuse self.names while assert_nothing_left and close() still look them up by label.
+        self.enterContext(harness.daemon_lock("host-executor"))
         u = secrets.token_hex(4)
         self.base, self.other = f"/srv/tst{u}", f"to{u}"
         root, backups = f"{self.base}/root", f"{self.base}/backups"
@@ -132,10 +136,9 @@ class SelftestTest(unittest.TestCase):
         }
 
     def run_selftest(self) -> dict[str, Any]:
-        """Under the daemon-wide lock `certify` of the integration harness holds: every selftest allocates the
-        lowest free ports of the daemon, so two runners must not run one at the same time."""
-        with harness.daemon_lock("host-executor"):
-            rep = selftest.run(self.ctx(), host=True, offline=False, fixtures=str(REPO / "fixtures"))
+        """Under the daemon-wide lock setUp took (never taken again here: flock belongs to the open file, so a second
+        open of the lock file in this process would wait on itself)."""
+        rep = selftest.run(self.ctx(), host=True, offline=False, fixtures=str(REPO / "fixtures"))
         self.names = rep["instances"]
         return rep
 

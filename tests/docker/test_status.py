@@ -7,6 +7,7 @@ host/attention.json and exits 5 only when the attention set changed."""
 import hashlib
 import json
 import os
+import re
 import shutil
 import time
 import unittest
@@ -24,24 +25,38 @@ from ingat.ops import status as st
 from ingat.policy import gate
 from ingat.store import fs, state
 from tests.docker.helpers import COMMIT, IMAGE, RELEASE, Lab
+from tests.harness import background
 
 SKIP = not os.path.exists("/var/run/docker.sock")
 DOWN = "service app is not running, although the app should be running"
 FOREIGN = "sits in this app's Docker project but does not belong to this instance"
+GEN = re.compile(r"[^/]+/[^/]+/[gt][0-9]+")  # <instance>/<store>/<generation> under the data root
 
 
-def tree_hash(root: str) -> str:
-    """Every path, mode and content under `root`."""
+def tree_hash(root: str, data: str = "") -> str:
+    """Every path, mode and content under `root`. Under `data` (the data root) a bind-store generation is listed by
+    path and mode only, never entered: the running app changes its content on its own (its SQLite -wal and -shm files
+    come and go between a listing and its lstat)."""
     h = hashlib.sha256()
-    for d, dirs, files in sorted(os.walk(root)):
+    for d, dirs, files in os.walk(root):
         dirs.sort()
+        gens = {x for x in dirs if data and GEN.fullmatch(os.path.relpath(os.path.join(d, x), data))}
         for name in sorted(files + dirs):
             path = os.path.join(d, name)
             st_ = os.lstat(path)
+            if name in gens:
+                h.update(f"{os.path.relpath(path, root)} {st_.st_mode}\n".encode())
+                continue
             h.update(f"{os.path.relpath(path, root)} {st_.st_mode} {st_.st_size}\n".encode())
             if os.path.isfile(path):
                 h.update(Path(path).read_bytes())
+        dirs[:] = [x for x in dirs if x not in gens]
     return h.hexdigest()
+
+
+def data_root(lab: Lab) -> str:
+    """The lab's data root: its generations hold the running app's own files."""
+    return os.path.join(lab.layout.root, "data")
 
 
 @unittest.skipIf(SKIP, "needs a scratch Docker daemon")
@@ -201,7 +216,9 @@ class StatusTest(unittest.TestCase):
 
     def test_clean_status_and_doctor_write_nothing(self) -> None:
         lab = self.lab
-        before, since = (tree_hash(lab.base), tree_hash(lab.layout.backups)), f"{time.time():.6f}"
+        before = (tree_hash(lab.base, data_root(lab)), tree_hash(lab.layout.backups))
+        w = background.EventStream(filters=())  # every type: a diagnostic creates no network or volume either
+        self.addCleanup(w.close)
         rep = self.status(st.status, lab.name)
         self.assertEqual((rep["exit"], rep["attention"], rep["next"]), (0, {}, None), rep["lines"])
         self.assertEqual(rep["instance"]["services"][0]["state"], "running")
@@ -218,9 +235,8 @@ class StatusTest(unittest.TestCase):
         self.assertNotIn(lab.secret, json.dumps(logs))
         self.assertEqual([r["outcome"] for r in self.status(st.history, lab.name)["operations"]], ["completed"])
         self.assertEqual([b["id"] for b in self.status(st.bundles, lab.name)["bundles"]], ["b1"])
-        self.assertEqual((tree_hash(lab.base), tree_hash(lab.layout.backups)), before)
-        events = lab.docker.events(since, f"{time.time() + 0.5:.6f}")
-        self.assertEqual([e for e in events if lab.name in json.dumps(e)], [])
+        self.assertEqual((tree_hash(lab.base, data_root(lab)), tree_hash(lab.layout.backups)), before)
+        self.assertEqual([e for e in w.events() if lab.name in json.dumps(e)], [])
 
     def test_stopped_container_is_changed_outside(self) -> None:
         cid = self.container()
@@ -338,17 +354,17 @@ class StatusTest(unittest.TestCase):
             self.assertEqual((rep["exit"], rep["next"]), (5, f"{brand.CLI} resume {lab.name}"))
             history = self.status(st.history, lab.name)["operations"]
             self.assertEqual([(r["seq"], r["outcome"]) for r in history], [(1, "completed"), (5, "open")])
-            before = tree_hash(lab.base)
+            before = tree_hash(lab.base, data_root(lab))
             rep = self.status(st.scheduled_status)
             self.assertEqual((rep["exit"], rep["lines"]), (5, [f"now needs attention: {lab.name}: open-operation"]))
             doc = state.read_doc(att, "attention")
             self.assertEqual(doc["codes"], {lab.name: ["open-operation"]})
             os.remove(att)
-            self.assertEqual(tree_hash(lab.base), before)  # attention.json was the only file written
+            self.assertEqual(tree_hash(lab.base, data_root(lab)), before)  # attention.json was the only file written
             self.status(st.scheduled_status)
-            written = tree_hash(lab.base)
+            written = tree_hash(lab.base, data_root(lab))
             rep = self.status(st.scheduled_status)
-            self.assertEqual((rep["exit"], rep["lines"], tree_hash(lab.base)), (0, [], written))
+            self.assertEqual((rep["exit"], rep["lines"], tree_hash(lab.base, data_root(lab))), (0, [], written))
         finally:
             os.rmdir(op)
         rep = self.status(st.scheduled_status)

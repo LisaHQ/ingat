@@ -391,7 +391,11 @@ class Named(Crashes):
         for top in (H.root, H.backups):  # terminal output is never captured (F12)
             for d, _, files in os.walk(top):
                 for f in (os.path.join(d, x) for x in files if not os.path.islink(os.path.join(d, x))):
-                    self.assertNotIn(token.encode(), Path(f).read_bytes(), f)
+                    try:
+                        data = Path(f).read_bytes()
+                    except FileNotFoundError:  # a running app's own temporary file (SQLite -wal, -shm) went meanwhile
+                        continue
+                    self.assertNotIn(token.encode(), data, f)
         enqueue(name)
         must(H.cli("backup", name))
         must(H.cli("verify", name, "--latest", "--restore-test"))

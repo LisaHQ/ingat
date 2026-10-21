@@ -9,6 +9,7 @@ import pty
 import select
 import signal
 import subprocess
+import tempfile
 import time
 from collections.abc import Mapping
 from typing import Any
@@ -141,21 +142,37 @@ class Proc:
 
 
 class EventStream:
-    """The daemon's container events from now on, streamed (`docker events --since <now>`, no end). `events(since,
-    until)` replays the daemon's in-memory event buffer, which keeps only the newest few hundred events: on a scratch
-    daemon that parallel suites share (probe execs alone add events every few seconds) the start of a window can be
-    gone within seconds. A stream keeps every event; `events()` returns those that arrived so far."""
+    """The daemon's events from now on, streamed (`docker events --since <now>`, no end); container events unless
+    `filters` says otherwise. `events(since, until)` replays the daemon's in-memory event buffer, which keeps only the
+    newest few hundred events: on a scratch daemon that parallel suites share (probe execs alone add events every few
+    seconds) the start of a window can be gone within seconds. A stream keeps every event; `events()` returns those
+    that arrived so far. The stream goes to a file, never a pipe: the daemon waits up to 100 ms on a subscriber that
+    does not read and then drops its events, so an unread pipe would slow every suite on the daemon (no reader thread:
+    `pty.fork` stays the only fork)."""
 
-    def __init__(self) -> None:
-        self._p = Proc(["docker", "events", "--since", now(), "--format", "{{json .}}", "--filter", "type=container"])
+    def __init__(self, filters: tuple[str, ...] = ("type=container",)) -> None:
+        fd, self._path = tempfile.mkstemp(prefix="ingat-events-")
+        os.close(fd)
+        argv = ["docker", "events", "--since", now(), "--format", "{{json .}}"]
+        argv += [part for f in filters for part in ("--filter", f)]
+        with open(self._path, "ab") as out, open(self._path + ".err", "ab") as err:  # appends: no shared offset
+            self._p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=out, stderr=err, env=ENV)
 
     def events(self, settle: float = 1.0) -> list[dict[str, Any]]:
         """Every event so far, after `settle` seconds for those in flight."""
-        end = time.monotonic() + settle
-        while (left := end - time.monotonic()) > 0:
-            self._p.drain(left)
-        text = self._p.out.decode(errors="replace")
+        time.sleep(settle)
+        if self._p.poll() is not None:
+            with open(self._path + ".err", "rb") as f:
+                why = f.read().decode(errors="replace")
+            raise AssertionError(f"docker events ended (exit {self._p.returncode}): {why}")
+        with open(self._path, "rb") as f:
+            text = f.read().decode(errors="replace")
         return [json.loads(x) for x in text[: text.rfind("\n") + 1].splitlines() if x.strip()]
 
     def close(self) -> None:
-        self._p.close()
+        if self._p.poll() is None:
+            self._p.kill()
+            self._p.wait(30)
+        for path in (self._path, self._path + ".err"):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(path)
