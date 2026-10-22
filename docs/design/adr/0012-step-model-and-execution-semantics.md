@@ -1,5 +1,7 @@
 # ADR-0012 Step model and execution semantics
 
+**English** · [Tiếng Việt](0012-step-model-and-execution-semantics.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** One executor runs every operation as a list of typed steps from a fixed set. Each step is written down before it runs; helper containers get predictable names and are always stopped before the lock is released; and an interrupted backup or check is undone automatically, so it never blocks the next one.

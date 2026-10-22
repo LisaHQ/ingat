@@ -1,5 +1,7 @@
 # ADR-0006 Compose runs on the app's own files plus a generated override
 
+**English** · [Tiếng Việt](0006-compose-app-files-plus-override.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** Ingat runs Docker Compose on the app's own, unchanged Compose files plus one file it generates. That file pins exact images and adds labels that never change between deployments, so only services whose settings really changed are recreated.

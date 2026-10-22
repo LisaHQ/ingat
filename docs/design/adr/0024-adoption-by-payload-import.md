@@ -1,5 +1,7 @@
 # ADR-0024 Adoption of a foreign deployment by payload import and restore, never in place
 
+**English** · [Tiếng Việt](0024-adoption-by-payload-import.vi.md)
+
 **Status:** Accepted (owner requirement, 2026-10-14; design revised after review the same day). Planned M4 slice 11.
 
 **In plain words:** Ingat can take over an app it did not install, but never in place. The owner stops the old app and makes a backup with the app's own backup command; Ingat imports that backup, test-restores it, and restores it into a new instance. Ingat never touches the old app's containers or data. Planned for M4.

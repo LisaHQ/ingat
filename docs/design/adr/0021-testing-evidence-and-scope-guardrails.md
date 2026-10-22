@@ -1,5 +1,7 @@
 # ADR-0021 Testing, evidence and scope guardrails
 
+**English** · [Tiếng Việt](0021-testing-evidence-and-scope-guardrails.vi.md)
+
 **Status:** Accepted; revised 2026-10-14, before any implementation, for platform-neutral host support ([ADR-0025](0025-host-baseline.md)): an arm64 lane joins the real-Docker gate.
 
 **In plain words:** Every change is tested on real Docker: Engine 24.0 and one exact 29.x on `x86_64`, and 29.x on `arm64`. Only CI runs and committed machine certifications count as evidence, judged `PASS`, `FAIL` or `BLOCKED`. Size limits and the rule "a real app on a real machine in the first milestone" keep the project from growing out of hand.

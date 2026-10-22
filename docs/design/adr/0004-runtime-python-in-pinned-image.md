@@ -1,5 +1,7 @@
 # ADR-0004 Runtime: Python 3.13 inside a pinned image, run by a POSIX wrapper
 
+**English** · [Tiếng Việt](0004-runtime-python-in-pinned-image.vi.md)
+
 **Status:** Accepted (the M0 spike can trigger the fallback); revised 2026-10-14, before any implementation, for platform-neutral host support: the image is multi-arch ([ADR-0025](0025-host-baseline.md)).
 
 **In plain words:** Ingat ships as one container image, for `x86_64` and `arm64`, with a fixed Python, Docker command line, Compose and git inside. A tiny shell script on the machine starts it, so every machine runs exactly the files that were tested, whatever Python or Compose the machine has itself.

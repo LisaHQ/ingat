@@ -1,5 +1,7 @@
 # ADR-0002 Synthesis basis: lean structure, safety floors, DSM-native execution
 
+**English** · [Tiếng Việt](0002-synthesis-basis.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** Three draft designs were compared. Ingat takes the smallest one as its base, and adds the strongest safety rules of the second and the way the third runs on a NAS.

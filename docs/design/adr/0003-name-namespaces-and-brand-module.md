@@ -1,5 +1,7 @@
 # ADR-0003 Name, namespaces and one brand module
 
+**English** · [Tiếng Việt](0003-name-namespaces-and-brand-module.vi.md)
+
 **Status:** Accepted; account, namespace and visibility decided by the owner on 2026-10-14 (owner decisions OD-2, OD-3); the product name Ingat confirmed by the owner on 2026-10-14 (owner decision OD-1); default roots made generic the same day, before any implementation ([ADR-0025](0025-host-baseline.md)).
 
 **In plain words:** The names are fixed once: Ingat, the `ingat` command, the LisaHQ organisation, the label and image names, and the default folders. In code they live only in one names file and the start-script template, because Docker labels cannot be renamed later.

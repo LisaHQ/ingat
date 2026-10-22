@@ -1,5 +1,7 @@
 # ADR-0009 The app manifest lives in the app repository; TOML; closed vocabularies
 
+**English** · [Tiếng Việt](0009-app-manifest-in-app-repository.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** Each app describes itself in `ingat.toml` in its own repository, read from the exact version being installed. The format is TOML, and every list of allowed words in it (steps, task modes, checks, placeholders) is fixed: a new word needs an ADR and a real app that needs it.

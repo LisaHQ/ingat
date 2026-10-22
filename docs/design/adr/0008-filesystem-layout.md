@@ -1,5 +1,7 @@
 # ADR-0008 Filesystem layout: plain POSIX root, root-written backups root
 
+**English** · [Tiếng Việt](0008-filesystem-layout.vi.md)
+
 **Status:** Accepted; revised 2026-10-14, before any implementation, for platform-neutral host support ([ADR-0025](0025-host-baseline.md)): the backups root is generic, and the DSM shared folder is its form in the DSM profile. The earlier title was "Filesystem layout: plain POSIX root, root-written backup share".
 
 **In plain words:** Ingat's own folder is a plain folder that only root can open. A backup is first written there, then copied into a separate backups folder that only root can write to; that folder is the one your off-site copy is taken from.

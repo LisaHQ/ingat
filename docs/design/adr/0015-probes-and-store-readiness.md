@@ -1,5 +1,7 @@
 # ADR-0015 Probes: three kinds, stability windows, any-of values, store readiness
 
+**English** · [Tiếng Việt](0015-probes-and-store-readiness.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** Ingat checks that an app is ready in three ways (Docker's health status, a command inside the container, an HTTP request), and a check can be required to stay good for a set time. Each time a database starts, Ingat waits until the readiness check the app declares for it passes, not just until its container is running; Docker's health status alone was rejected as the only kind of check.

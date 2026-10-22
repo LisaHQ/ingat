@@ -1,5 +1,7 @@
 # ADR-0027 Local fixture repositories for selftest and tests
 
+**English** · [Tiếng Việt](0027-local-fixture-repositories.vi.md)
+
 **Status:** Accepted (2026-10-15).
 
 **In plain words:** Self-tests and CI use small local git repositories inside Ingat's own folder (`file://` addresses there and nowhere else), so they take the same path as a real app without needing a git server.

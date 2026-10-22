@@ -1,5 +1,7 @@
 # ADR-0018 App environment control and holds
 
+**English** · [Tiếng Việt](0018-app-environment-control-and-holds.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** An app declares every setting it accepts. Some may only change with the strongest approval, some are forbidden, and some Ingat fills in itself. Isolated runs (test restores, and the staging step of a real restore) get holds: settings that stop them from sending real mail and let them start without outside access.

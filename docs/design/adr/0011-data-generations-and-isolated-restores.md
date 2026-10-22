@@ -1,5 +1,7 @@
 # ADR-0011 Data generations; restores and drills in isolated projects
 
+**English** · [Tiếng Việt](0011-data-generations-and-isolated-restores.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** An app's data lives in numbered data areas (generations). A restore fills a new data area in a separate, sealed-off project and only then switches the app over; the old data stays. Test restores use throwaway projects.

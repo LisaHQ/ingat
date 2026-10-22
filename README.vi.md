@@ -270,16 +270,16 @@ Toàn bộ thiết kế: [`docs/design/ARCHITECTURE.vi.md`](docs/design/ARCHITEC
 
 | Nếu bạn là… | Hãy đọc |
 |---|---|
-| Người chạy Ingat trên máy của mình | [Hướng dẫn vận hành](docs/guide/operator-guide.vi.md): cài đặt, kiểm tra máy, thêm ứng dụng, việc hằng ngày, việc chạy theo lịch, phải làm gì khi có sự cố |
+| Người chạy Ingat trên máy của mình | [Hướng dẫn vận hành](docs/guide/operator-guide.vi.md): cài đặt, kiểm tra máy, thêm ứng dụng, việc hằng ngày, việc chạy theo lịch, phải làm gì khi có sự cố; mọi khóa của tệp bản cài nằm trong [`MANIFEST_SPEC.vi.md` §6](docs/app-developers/MANIFEST_SPEC.vi.md#6-cấu-trúc-tệp-cấu-hình-bản-cài-phiên-bản-1) |
 | Người làm cho ứng dụng của mình chạy được với Ingat | [`docs/app-developers/MANIFEST_SPEC.vi.md`](docs/app-developers/MANIFEST_SPEC.vi.md): các tệp `ingat.toml` và `instance.toml`, kèm ví dụ đầy đủ; [danh sách việc khi đưa ứng dụng vào](docs/design/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) |
 | Người tò mò Ingat hoạt động bên trong ra sao | [`docs/design/ARCHITECTURE.vi.md`](docs/design/ARCHITECTURE.vi.md) (thiết kế, bảo mật, kiểm thử, các máy được hỗ trợ) và [`docs/design/LIFECYCLE.vi.md`](docs/design/LIFECYCLE.vi.md) (quy tắc an toàn bắt buộc, duyệt, từng thao tác theo từng bước, mã thoát) |
 | Người theo dõi kế hoạch | [`docs/design/ROADMAP.vi.md`](docs/design/ROADMAP.vi.md): các mốc, điều kiện hoàn thành, và những việc chờ một điều kiện kích hoạt |
 | Người muốn biết vì sao một lựa chọn được đưa ra | [`docs/design/adr/`](docs/design/adr/README.vi.md): mỗi lựa chọn có một bản ghi quyết định |
 | Người đóng góp, hoặc một agent phát triển (trợ lý AI) | [`CLAUDE.md`](CLAUDE.md) trước tiên: các quy tắc cho mọi thay đổi |
 
-Tài liệu được xếp theo người đọc: [`docs/guide/`](docs/guide/) cho người chạy Ingat, [`docs/app-developers/`](docs/app-developers/) cho nhà phát triển ứng dụng, và [`docs/design/`](docs/design/) cho thiết kế, kế hoạch và các bản ghi quyết định.
+Tài liệu được xếp theo người đọc: [`docs/guide/`](docs/guide/) cho người chạy Ingat, [`docs/app-developers/`](docs/app-developers/) cho nhà phát triển ứng dụng (thư mục này cũng định nghĩa tệp bản cài mà người vận hành viết), và [`docs/design/`](docs/design/) cho thiết kế, kế hoạch và các bản ghi quyết định; nhà phát triển ứng dụng cũng cần [danh sách việc khi đưa ứng dụng vào](docs/design/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) ở đó.
 
-Mỗi tài liệu, trừ [`CLAUDE.md`](CLAUDE.md), đều có một bản tiếng Việt bên cạnh, tên là `<name>.vi.md`. Bản tiếng Anh là bản chuẩn.
+Mỗi tài liệu Markdown, trừ [`CLAUDE.md`](CLAUDE.md), đều có một bản tiếng Việt bên cạnh, tên là `<name>.vi.md`. Bản tiếng Anh là bản chuẩn.
 
 ## Các từ dùng trong Ingat
 

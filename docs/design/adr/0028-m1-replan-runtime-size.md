@@ -1,5 +1,7 @@
 # ADR-0028 M1 re-plan: runtime size
 
+**English** · [Tiếng Việt](0028-m1-replan-runtime-size.vi.md)
+
 **Status:** Accepted (owner, 2026-10-15), under the 1.5× stop rule of [ROADMAP.md](../ROADMAP.md) §3.
 
 **In plain words:** Milestone M1 turned out bigger than first estimated: about 6,600 lines of code instead of 3,000, with a stop for review at about 10,000. What M1 delivers did not change.

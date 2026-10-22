@@ -1,5 +1,7 @@
 # ADR-0001 A separate repository, rebuilt from scratch
 
+**English** · [Tiếng Việt](0001-separate-repository-rebuilt-from-scratch.vi.md)
+
 **Status:** Accepted (owner directive, 2026-10-14).
 
 **In plain words:** Ingat is a new, separate project written from scratch. It shares nothing with the older in-house tool it replaces and cannot read that tool's data; the apps on the host today are reinstalled fresh, without moving their old data.

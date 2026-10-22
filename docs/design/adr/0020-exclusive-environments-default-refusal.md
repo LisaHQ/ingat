@@ -1,5 +1,7 @@
 # ADR-0020 Exclusive environments default to refusal
 
+**English** · [Tiếng Việt](0020-exclusive-environments-default-refusal.vi.md)
+
 **Status:** Accepted, pending owner decision OD-5.
 
 **In plain words:** An app can say that its production copy must not share a machine with another copy of the same app. Ingat then refuses by default. The owner may relax the rule later (OD-5).

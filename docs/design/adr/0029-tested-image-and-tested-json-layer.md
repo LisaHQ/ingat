@@ -1,5 +1,7 @@
 # ADR-0029 One image build per pipeline, tested by every lane, with tested.json as its final layer
 
+**English** · [Tiếng Việt](0029-tested-image-and-tested-json-layer.vi.md)
+
 **Status:** Accepted (2026-10-15).
 
 **In plain words:** Each CI run builds the Ingat image once, and every test lane tests exactly that build. The release is the same build plus one last layer holding `tested.json`, the list of Docker versions whose lanes passed.

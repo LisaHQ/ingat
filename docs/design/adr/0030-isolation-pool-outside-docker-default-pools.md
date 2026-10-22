@@ -1,5 +1,7 @@
 # ADR-0030 The isolation subnet pool lies outside Docker's default address pools
 
+**English** · [Tiếng Việt](0030-isolation-pool-outside-docker-default-pools.vi.md)
+
 **Status:** Accepted (2026-10-16).
 
 **In plain words:** Test restores (and, from M2, restore staging) take their private networks from `10.250.0.0/20`, a range Docker does not use by default, so Docker's own networks no longer fill it up; if none of its 16 slots is free, Ingat stops with a clear message instead.

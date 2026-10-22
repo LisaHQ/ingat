@@ -1,5 +1,7 @@
 # ADR-0019 Secrets
 
+**English** · [Tiếng Việt](0019-secrets.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** Passwords and keys exist only as files, checked before every use. They are hidden in all output, error messages name only their keys, and they never go into a backup.

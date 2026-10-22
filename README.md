@@ -270,16 +270,16 @@ The full design: [`docs/design/ARCHITECTURE.md`](docs/design/ARCHITECTURE.md) an
 
 | If you are… | Read |
 |---|---|
-| Running Ingat on your machine | [Operator guide](docs/guide/operator-guide.md): install, check the machine, add an app, everyday tasks, scheduled jobs, what to do when something goes wrong |
+| Running Ingat on your machine | [Operator guide](docs/guide/operator-guide.md): install, check the machine, add an app, everyday tasks, scheduled jobs, what to do when something goes wrong; every key of your instance file is in [`MANIFEST_SPEC.md` §6](docs/app-developers/MANIFEST_SPEC.md#6-instance-config-schema-1) |
 | Making your app work with Ingat | [`docs/app-developers/MANIFEST_SPEC.md`](docs/app-developers/MANIFEST_SPEC.md): the `ingat.toml` and `instance.toml` files, with complete examples; the [onboarding checklist](docs/design/ARCHITECTURE.md#113-generality-rule) |
 | Curious how Ingat works inside | [`docs/design/ARCHITECTURE.md`](docs/design/ARCHITECTURE.md) (design, security, testing, supported machines) and [`docs/design/LIFECYCLE.md`](docs/design/LIFECYCLE.md) (safety floors, approvals, every operation step by step, exit codes) |
 | Following the plan | [`docs/design/ROADMAP.md`](docs/design/ROADMAP.md): milestones, exit gates and what waits for a trigger |
 | Asking why a choice was made | [`docs/design/adr/`](docs/design/adr/README.md): one decision record per choice |
 | Contributing, or an AI development agent | [`CLAUDE.md`](CLAUDE.md) first: the rules for every change |
 
-The docs are sorted by reader: [`docs/guide/`](docs/guide/) for people who run Ingat, [`docs/app-developers/`](docs/app-developers/) for app developers, and [`docs/design/`](docs/design/) for the design, the plan and the decision records.
+The docs are sorted by reader: [`docs/guide/`](docs/guide/) for people who run Ingat, [`docs/app-developers/`](docs/app-developers/) for app developers (it also defines the instance file that operators write), and [`docs/design/`](docs/design/) for the design, the plan and the decision records; app developers also need the [onboarding checklist](docs/design/ARCHITECTURE.md#113-generality-rule) there.
 
-Every document except [`CLAUDE.md`](CLAUDE.md) has a Vietnamese version beside it, named `<name>.vi.md`. The English version is the reference.
+Every Markdown document except [`CLAUDE.md`](CLAUDE.md) has a Vietnamese version beside it, named `<name>.vi.md`. The English version is the reference.
 
 ## Words used in Ingat
 

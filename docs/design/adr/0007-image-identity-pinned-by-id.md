@@ -1,5 +1,7 @@
 # ADR-0007 Image identity: pinned by ID, ledger, no image removal before M3
 
+**English** · [Tiếng Việt](0007-image-identity-pinned-by-id.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** Each service runs the exact image Ingat recorded, by its ID, never by a tag that could move. A write-once record keeps where every image came from, and Ingat removes no image before M3.

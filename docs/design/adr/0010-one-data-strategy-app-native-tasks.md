@@ -1,5 +1,7 @@
 # ADR-0010 One data strategy in v1: app-native tasks
 
+**English** · [Tiếng Việt](0010-one-data-strategy-app-native-tasks.vi.md)
+
 **Status:** Superseded by [ADR-0031](0031-data-providers.md) (2026-10-19): a second strategy, `provider`, joins `tasks`; the reasoning against engine code in `src/` stands.
 
 **In plain words:** The first data rule: apps back up and restore with their own commands, and Ingat does everything around them (stopping, sealing, checking, keeping). ADR-0031 replaced it by adding a second way; its reason for keeping database code out of Ingat's core still holds.

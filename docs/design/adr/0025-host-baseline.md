@@ -1,5 +1,7 @@
 # ADR-0025 Host support tiers and the first platform profile (Synology DSM 7.4)
 
+**English** · [Tiếng Việt](0025-host-baseline.vi.md)
+
 **Status:** Accepted (owner, 2026-10-14); revised the same day, before any implementation, by the owner's clarification that Ingat targets any host that runs Docker and Docker Compose. The earlier title was "Synology host baseline (DSM 7.4, Container Manager 24.0.2)".
 
 **In plain words:** Ingat supports any machine with a Linux Docker Engine 24.0 or later and Compose v2. Tier 1 is Linux with upstream Docker on a CI-tested line; tier 2 is an appliance with its vendor's Docker build, each build certified, Synology DSM 7.4 with Container Manager 24.0.2 first. Differences are detected, never decided by platform name. The record also lists what is not supported, and the rules for logging, CPU limits and recovery.

@@ -1,5 +1,7 @@
 # ADR-0023 Record compatibility within a state schema
 
+**English** · [Tiếng Việt](0023-record-compatibility-within-state-schema.vi.md)
+
 **Status:** Accepted.
 
 **In plain words:** Within one record version, Ingat's saved records only gain new optional fields whose defaults keep the old behaviour, so a newer Ingat and the previous one can both read them. Any other change needs a new record version and a migration command.
