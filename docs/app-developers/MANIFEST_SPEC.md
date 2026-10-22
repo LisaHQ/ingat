@@ -2,7 +2,7 @@
 
 **English** · [Tiếng Việt](MANIFEST_SPEC.vi.md)
 
-> **In plain words.** An app works with Ingat through two small TOML files. The **app manifest** `ingat.toml` is written by the app's developers and lives in the app's repository: it describes the app's services, data, tasks and checks, and holds no values of any particular machine. The **instance file** `instance.toml` is written by the person who runs the app and stays on that machine: name, source, ports, addresses, keep rules. This document defines every key of both files and ends with complete examples. App developers: start with §1, the [onboarding checklist](ARCHITECTURE.md#113-generality-rule), and the example closest to your app (§11 for one container with SQLite, §8 for several services with PostgreSQL, §13 for a stateless site).
+> **In plain words.** An app works with Ingat through two small TOML files. The **app manifest** `ingat.toml` is written by the app's developers and lives in the app's repository: it describes the app's services, data, tasks and checks, and holds no values of any particular machine. The **instance file** `instance.toml` is written by the person who runs the app and stays on that machine: name, source, ports, addresses, keep rules. This document defines every key of both files and ends with complete examples. App developers: start with §1, the [onboarding checklist](../design/ARCHITECTURE.md#113-generality-rule), and the example closest to your app (§11 for one container with SQLite, §8 for several services with PostgreSQL, §13 for a stateless site).
 
 **Where to find what**
 
@@ -47,8 +47,8 @@ Both files are TOML 1.0, parsed with `tomllib`; unknown keys are refused at ever
 | `[source] tag_pattern` | regex | Allowed tags when `release = "tag"`; like every regex of both files, it must compile at parse time |
 | `[source] images` | table service → param | Image sources only: which `image` param feeds which service |
 | `[compose] files` | list | Runtime Compose files, in merge order |
-| `[compose] build_files` | list | Files used only by an on-host build; unused while app images are built in the app's CI ([ADR-0026](adr/0026-app-images-built-in-app-ci.md)) |
-| `[compose] build_services` | list | Services whose images the app's own CI builds and publishes (owner decision OD-11, [ADR-0026](adr/0026-app-images-built-in-app-ci.md)). `prepare` pulls every image once by the reference its Compose service names (rendered with params, for example a `template` param `"ghcr.io/<owner>/<app>:{commit}"`) and pins it by ID and repository digest; for these services `expect_labels` is required and must bind `{commit}`, and each entry must name a Compose service (otherwise its label check would never run) |
+| `[compose] build_files` | list | Files used only by an on-host build; unused while app images are built in the app's CI ([ADR-0026](../design/adr/0026-app-images-built-in-app-ci.md)) |
+| `[compose] build_services` | list | Services whose images the app's own CI builds and publishes (owner decision OD-11, [ADR-0026](../design/adr/0026-app-images-built-in-app-ci.md)). `prepare` pulls every image once by the reference its Compose service names (rendered with params, for example a `template` param `"ghcr.io/<owner>/<app>:{commit}"`) and pins it by ID and repository digest; for these services `expect_labels` is required and must bind `{commit}`, and each entry must name a Compose service (otherwise its label check would never run) |
 | `[compose] build_env` | table | Variables for an on-host build only (templated); unused while app images are built in the app's CI |
 | `[compose] expect_labels` | table | Image labels that must equal the templated values, or the image is refused (provenance of pulled tags); required for `build_services`, with at least one value containing `{commit}` |
 
@@ -113,7 +113,7 @@ Every named volume in the merged model must be a store. `[services]`: `data` (st
 
 | Table | Keys |
 |---|---|
-| `[backup]` | `strategy = "tasks" \| "none"` (Planned: `"provider"`, [ADR-0031](adr/0031-data-providers.md), implied by `[data.<name>]` when `[backup]` is absent, §2.8), `steps` (tasks in order), `verify` (tasks), `payload` (required top-level entry name; templated), `[backup.naming]` (per class `scheduled`, `manual`, `pre-change`, `final`; default `"{bundle.stamp}-{class}"`) |
+| `[backup]` | `strategy = "tasks" \| "none"` (Planned: `"provider"`, [ADR-0031](../design/adr/0031-data-providers.md), implied by `[data.<name>]` when `[backup]` is absent, §2.8), `steps` (tasks in order), `verify` (tasks), `payload` (required top-level entry name; templated), `[backup.naming]` (per class `scheduled`, `manual`, `pre-change`, `final`; default `"{bundle.stamp}-{class}"`) |
 | `[restore]` | `start` (data services started on the new generation), `steps`, `post`, `checks` (tasks that must be `ok`), `activate` (start the activation groups in isolation and wait for `exec`/`health` probes). Restore tasks always run in the bundle's own release image (`LIFECYCLE.md` §4.10). |
 | `[rollback]` | `env` (env overrides for a restore-based rollback deployment; dropped by the next deploy) |
 | `[drill]` | `checks` (must be `ok`), `record` (recorded, findings allowed), `activate`, `min_free_memory`. Drills always use throwaway secrets. |
@@ -122,7 +122,7 @@ Every named volume in the merged model must be a store. `[services]`: `data` (st
 
 ### 2.8 `[data.<name>]` (Planned, ADR-0031)
 
-**Planned** ([ADR-0031](adr/0031-data-providers.md), after the M2 exit gate; additive in schema 1 before the freeze, else the first schema-2 change). An app without backup, restore and verify commands of its own declares its data sets instead, and the tool's own digest-pinned provider images supply those commands as ordinary tasks. Keys per data set: `provider` (a kind that `image/providers.lock` lists), `major`, `service` (role `data`), `store`, `database`, `user`, `password = { secret = "<name>" }`, `port`, `databases` (sqlite), `exclude` (files), `ready`, `timeout`; and `[stores.<name>] backup = false` for a cache store that is never captured and recreated empty. A manifest that declares `[data.<name>]` and no `[backup]` gets `strategy = "provider"` and the `[backup]`, `[restore]` and `[drill]` tables synthesized from the lock; which keys a kind takes comes from its lock entry (`keys`). The exact grammar, defaults and validation rules are written here when slice P1 lands ([`ROADMAP.md`](ROADMAP.md) §5).
+**Planned** ([ADR-0031](../design/adr/0031-data-providers.md), after the M2 exit gate; additive in schema 1 before the freeze, else the first schema-2 change). An app without backup, restore and verify commands of its own declares its data sets instead, and the tool's own digest-pinned provider images supply those commands as ordinary tasks. Keys per data set: `provider` (a kind that `image/providers.lock` lists), `major`, `service` (role `data`), `store`, `database`, `user`, `password = { secret = "<name>" }`, `port`, `databases` (sqlite), `exclude` (files), `ready`, `timeout`; and `[stores.<name>] backup = false` for a cache store that is never captured and recreated empty. A manifest that declares `[data.<name>]` and no `[backup]` gets `strategy = "provider"` and the `[backup]`, `[restore]` and `[drill]` tables synthesized from the lock; which keys a kind takes comes from its lock entry (`keys`). The exact grammar, defaults and validation rules are written here when slice P1 lands ([`ROADMAP.md`](../design/ROADMAP.md) §5).
 
 ## 3. Template vocabulary (closed)
 
@@ -191,7 +191,7 @@ Common keys: `expect` = `{status, json = {<dotted path> = value or [any-of…]},
 | `name` | `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, at most 30 characters; the Compose project name; `--` cannot occur |
 | `app`, `environment` | App id (must equal the manifest's `app`); environment label `^[a-z][a-z0-9-]{0,31}$` |
 | `disposable` | Fixed at `init`; lets purge skip its restore-test (the confirmation screen says so). It never relaxes approval: class D stays terminal-only. |
-| `[source]` | git: `repo` (ssh or https URL; a `file://` URL only for a fixture repository under `INGAT_ROOT/cache/fixtures/`, [ADR-0027](adr/0027-local-fixture-repositories.md)), `key` (name of a deploy key in `INGAT_ROOT/keys/`), `manifest` (path, default `ingat.toml`), `accept` (optional regex narrowing allowed refs). Image apps: `kind = "image"`. |
+| `[source]` | git: `repo` (ssh or https URL; a `file://` URL only for a fixture repository under `INGAT_ROOT/cache/fixtures/`, [ADR-0027](../design/adr/0027-local-fixture-repositories.md)), `key` (name of a deploy key in `INGAT_ROOT/keys/`), `manifest` (path, default `ingat.toml`), `accept` (optional regex narrowing allowed refs). Image apps: `kind = "image"`. |
 | `[params]` | Values for declared params only; `port` and `subnet` may be fixed here or left to allocation |
 | `[app_env]` | Values for declared non-secret app-env keys |
 | `[backups]` | `keep_daily`, `keep_weekly`, `keep_monthly`, `pin_pre_change_days`, `max_age_hours` (status attention), `restore_test_max_age_days` |
@@ -700,7 +700,7 @@ restore_test_max_age_days = 8
 
 ## 11. Example: `fx-lite` app manifest (the SQLite consumer pattern)
 
-This is the M2 acceptance form: a runtime Compose file whose network takes a fixed subnet from a `subnet` param; the app's CI builds and publishes the image by commit, and its build file is unused by Ingat ([ADR-0026](adr/0026-app-images-built-in-app-ci.md)). The M1 form mirrors the SQLite consumer before it has that runtime file: one Compose file, no `FXLITE_SUBNET` param and no `log_snapshot` (M1 refuses it at plan time); everything else is identical. The fixture `fx-lite` (`ARCHITECTURE.md` §10.2) is that M1 form, except that the instance names its image (the tool image in selftest and CI) and its readiness probe calls the fixture's own `fx-lite probe`, because the tool image has no `wget` (the header of `fixtures/fx-lite/ingat.toml` lists every difference).
+This is the M2 acceptance form: a runtime Compose file whose network takes a fixed subnet from a `subnet` param; the app's CI builds and publishes the image by commit, and its build file is unused by Ingat ([ADR-0026](../design/adr/0026-app-images-built-in-app-ci.md)). The M1 form mirrors the SQLite consumer before it has that runtime file: one Compose file, no `FXLITE_SUBNET` param and no `log_snapshot` (M1 refuses it at plan time); everything else is identical. The fixture `fx-lite` (`ARCHITECTURE.md` §10.2) is that M1 form, except that the instance names its image (the tool image in selftest and CI) and its readiness probe calls the fixture's own `fx-lite probe`, because the tool image has no `wget` (the header of `fixtures/fx-lite/ingat.toml` lists every difference).
 
 ```toml
 # ingat.toml — fx-lite app manifest (Ingat manifest schema 1).

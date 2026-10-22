@@ -8,7 +8,7 @@
 
 ## Bối cảnh
 
-Quyết định của chủ sở hữu OD-11 hỏi image của ứng dụng được build ở đâu: (a) trên máy, trong `prepare`, với một buildx đóng gói sẵn trong image của công cụ, hoặc (b) trong CI của từng ứng dụng, công bố lên một registry (kho image) rồi máy kéo về. Repository của cả hai ứng dụng tham chiếu đều công khai, nên image công bố lên GHCR được lưu và kéo về miễn phí mà không cần đăng nhập. Build trên máy làm máy nặng thêm bên cạnh các bản cài đang chạy và các lần thử khôi phục, làm đầy thư mục gốc của Docker bằng bộ nhớ đệm build, build lại cùng một commit thành các image ID khác nhau trên máy khác, và là hạng mục chưa được kiểm chứng lớn nhất của M1-M2 (các phép kiểm tra build của thử nghiệm sớm S4). Bản thiết kế để ADR này quyết định "khóa nêu tên nguồn" ([ROADMAP.md](../ROADMAP.vi.md) M0, [MANIFEST_SPEC.md](../MANIFEST_SPEC.vi.md) §2.1).
+Quyết định của chủ sở hữu OD-11 hỏi image của ứng dụng được build ở đâu: (a) trên máy, trong `prepare`, với một buildx đóng gói sẵn trong image của công cụ, hoặc (b) trong CI của từng ứng dụng, công bố lên một registry (kho image) rồi máy kéo về. Repository của cả hai ứng dụng tham chiếu đều công khai, nên image công bố lên GHCR được lưu và kéo về miễn phí mà không cần đăng nhập. Build trên máy làm máy nặng thêm bên cạnh các bản cài đang chạy và các lần thử khôi phục, làm đầy thư mục gốc của Docker bằng bộ nhớ đệm build, build lại cùng một commit thành các image ID khác nhau trên máy khác, và là hạng mục chưa được kiểm chứng lớn nhất của M1-M2 (các phép kiểm tra build của thử nghiệm sớm S4). Bản thiết kế để ADR này quyết định "khóa nêu tên nguồn" ([ROADMAP.md](../ROADMAP.vi.md) M0, [MANIFEST_SPEC.md](../../app-developers/MANIFEST_SPEC.vi.md) §2.1).
 
 ## Quyết định
 

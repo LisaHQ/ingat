@@ -6,7 +6,7 @@
 
 ## Context
 
-Owner decision OD-11 asked where app images are built: (a) on the host in `prepare` with a buildx bundled in the tool image, or (b) in each app's CI, published to a registry and pulled by the host. Both reference consumers' repositories are public, so images published to GHCR are free to store and pull anonymously. An on-host build loads the host beside its live instances and drills, fills the Docker root with build cache, rebuilds the same commit into different image IDs on another host, and was the largest unverified item of M1-M2 (spike S4's build checks). The design left "the key that names the source" to this ADR ([ROADMAP.md](../ROADMAP.md) M0, [MANIFEST_SPEC.md](../MANIFEST_SPEC.md) §2.1).
+Owner decision OD-11 asked where app images are built: (a) on the host in `prepare` with a buildx bundled in the tool image, or (b) in each app's CI, published to a registry and pulled by the host. Both reference consumers' repositories are public, so images published to GHCR are free to store and pull anonymously. An on-host build loads the host beside its live instances and drills, fills the Docker root with build cache, rebuilds the same commit into different image IDs on another host, and was the largest unverified item of M1-M2 (spike S4's build checks). The design left "the key that names the source" to this ADR ([ROADMAP.md](../ROADMAP.md) M0, [MANIFEST_SPEC.md](../../app-developers/MANIFEST_SPEC.md) §2.1).
 
 ## Decision
 

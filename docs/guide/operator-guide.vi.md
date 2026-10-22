@@ -2,9 +2,9 @@
 
 [English](operator-guide.md) · **Tiếng Việt** (bản dịch; bản tiếng Anh là bản chuẩn)
 
-Hướng dẫn này dành cho người chạy Ingat trên một máy: bạn cài nó, thêm các ứng dụng của mình, và giữ cho chúng luôn được sao lưu và cập nhật. Hướng dẫn nói bạn cần gõ gì và sẽ thấy gì. Lý do đằng sau từng quy tắc nằm trong [`LIFECYCLE.vi.md`](../LIFECYCLE.vi.md) và [`ARCHITECTURE.vi.md`](../ARCHITECTURE.vi.md).
+Hướng dẫn này dành cho người chạy Ingat trên một máy: bạn cài nó, thêm các ứng dụng của mình, và giữ cho chúng luôn được sao lưu và cập nhật. Hướng dẫn nói bạn cần gõ gì và sẽ thấy gì. Lý do đằng sau từng quy tắc nằm trong [`LIFECYCLE.vi.md`](../design/LIFECYCLE.vi.md) và [`ARCHITECTURE.vi.md`](../design/ARCHITECTURE.vi.md).
 
-Hướng dẫn áp dụng cho phiên bản 0.1.0 (mốc M1), tức các lệnh đã có trong mã hôm nay ([README](../../README.vi.md#dùng-hằng-ngày)). Khôi phục, việc duyệt các lệnh có thể làm mất dữ liệu (lớp D), `secret set` và việc giao một kế hoạch cho trợ lý AI (`plan`/`apply`) sẽ có ở M2 ([`ROADMAP.vi.md`](../ROADMAP.vi.md)); hướng dẫn nói rõ ở những chỗ liên quan.
+Hướng dẫn áp dụng cho phiên bản 0.1.0 (mốc M1), tức các lệnh đã có trong mã hôm nay ([README](../../README.vi.md#dùng-hằng-ngày)). Khôi phục, việc duyệt các lệnh có thể làm mất dữ liệu (lớp D), `secret set` và việc giao một kế hoạch cho trợ lý AI (`plan`/`apply`) sẽ có ở M2 ([`ROADMAP.vi.md`](../design/ROADMAP.vi.md)); hướng dẫn nói rõ ở những chỗ liên quan.
 
 **Cách đọc các ví dụ.** Chạy mọi lệnh bằng tài khoản quản trị của máy, root. `ingat` là lệnh `ingat` mà trình cài đặt tạo ra: `/srv/ingat/bin/ingat` với các thư mục mặc định, hoặc `/volume1/ingat/bin/ingat` trên NAS Synology. `lite-test` là một bản cài ví dụ (một bản sao đã cài đặt của một ứng dụng, instance) của ứng dụng mẫu `fx-lite`.
 
@@ -17,13 +17,13 @@ Hướng dẫn áp dụng cho phiên bản 0.1.0 (mốc M1), tức các lệnh �
 
 ## 1. Trước khi bắt đầu
 
-- **Máy.** Bạn cần một Docker Engine Linux 24.0 trở lên có plugin `docker compose`, truy cập được bằng root qua socket cục bộ; SSH với `sudo -i`; một bộ lập lịch gửi email cho bạn khi một việc bị lỗi (systemd timer, cron, hoặc Task Scheduler trên NAS Synology); và một công cụ chép các bản sao lưu sang nơi khác (restic, borg, rsync, hoặc Hyper Backup trên NAS Synology). Chi tiết: [`ARCHITECTURE.vi.md`](../ARCHITECTURE.vi.md#114-yêu-cầu-tối-thiểu-cho-máy) §11.4.
+- **Máy.** Bạn cần một Docker Engine Linux 24.0 trở lên có plugin `docker compose`, truy cập được bằng root qua socket cục bộ; SSH với `sudo -i`; một bộ lập lịch gửi email cho bạn khi một việc bị lỗi (systemd timer, cron, hoặc Task Scheduler trên NAS Synology); và một công cụ chép các bản sao lưu sang nơi khác (restic, borg, rsync, hoặc Hyper Backup trên NAS Synology). Chi tiết: [`ARCHITECTURE.vi.md`](../design/ARCHITECTURE.vi.md#114-yêu-cầu-tối-thiểu-cho-máy) §11.4.
 - **Hai thư mục.**
   - `INGAT_ROOT` giữ các bản ghi của Ingat và dữ liệu đang dùng của những ứng dụng lưu dữ liệu trong thư mục thường. Mặc định `/srv/ingat`. Nó phải thuộc root với quyền `0700`, tức chỉ root mở được, và phải nằm trên ổ đĩa bên trong máy này, không bao giờ trên ổ mạng.
   - `INGAT_BACKUPS` giữ các bản sao lưu đã hoàn tất. Mỗi bản được niêm phong bằng mã kiểm tra, nên mọi thay đổi về sau trên nó đều bị phát hiện. Mặc định `/srv/ingat-backups`. Chỉ root ghi vào đó, và bản sao ở nơi khác của bạn được chép từ thư mục này.
   - Trên NAS Synology, hãy truyền `--root /volume1/ingat --backups /volume1/ingat-backups` khi cài. Ở đó không bao giờ dùng mặc định `/srv`.
 - **Ingat chỉ nhìn thấy hai thư mục này.** Nó chạy trong container riêng, và container đó chỉ thấy `INGAT_ROOT` và `INGAT_BACKUPS`, không thấy gì khác trên máy. Vì vậy mọi đường dẫn tệp bạn đưa cho nó (`init --config`, `validate <repo-dir>`, `validate --instance`, các tệp `--input` của tác vụ) phải là đường dẫn đầy đủ nằm trong một trong hai thư mục đó, nếu không Ingat sẽ không tìm thấy tệp. Hãy đặt những tệp như vậy, và mã nguồn ứng dụng đã tải về, vào thư mục nhận tệp (inbox): `INGAT_ROOT/inbox/`.
-- **Ứng dụng của bạn** cần có `ingat.toml` trong repository và các image do CI của nó build ([`MANIFEST_SPEC.vi.md`](../MANIFEST_SPEC.vi.md); danh sách việc khi đưa ứng dụng vào trong [`ARCHITECTURE.vi.md`](../ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) §11.3). `ingat validate <repo-dir>` kiểm tra một bản mã nguồn đã tải về mà không cần mạng và không thay đổi gì, ví dụ một bản nằm dưới `INGAT_ROOT/inbox/`.
+- **Ứng dụng của bạn** cần có `ingat.toml` trong repository và các image do CI của nó build ([`MANIFEST_SPEC.vi.md`](../app-developers/MANIFEST_SPEC.vi.md); danh sách việc khi đưa ứng dụng vào trong [`ARCHITECTURE.vi.md`](../design/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) §11.3). `ingat validate <repo-dir>` kiểm tra một bản mã nguồn đã tải về mà không cần mạng và không thay đổi gì, ví dụ một bản nằm dưới `INGAT_ROOT/inbox/`.
 - **Giữ Docker ở một phiên bản đã kiểm thử.** Các lệnh có thay đổi chỉ chạy trên một dòng phiên bản Docker Engine mà bản phát hành Ingat này đã được kiểm thử cùng (danh sách nằm sẵn trong Ingat, tệp `tested.json`), và chỉ sau lần kiểm tra máy ở mục 2, việc bạn làm lại sau mỗi lần cập nhật máy. Trên một phiên bản Docker khác, `ingat status` báo `not a tested combination of this release`: bạn vẫn xem được mọi thứ và vẫn sao lưu được theo cách không dừng ứng dụng, nhưng mọi lệnh thay đổi ứng dụng hay dữ liệu đều từ chối. Vì vậy đừng để Docker tự cập nhật: trên máy Linux hãy ghim `docker-ce` (`apt-mark hold`), và chỉ lên Docker mới cùng với một bản phát hành Ingat đã được kiểm thử với nó.
 
 ## 2. Cài Ingat và kiểm tra máy
@@ -54,7 +54,7 @@ Trên NAS Synology, đưa cho `facts.sh` cùng hai thư mục đó: `sh facts.sh
 
 ## 3. Thêm ứng dụng của bạn
 
-1. **Viết tệp bản cài** vào inbox, ví dụ `/srv/ingat/inbox/lite-test.toml`. Mọi khóa và một ví dụ đầy đủ: [`MANIFEST_SPEC.vi.md`](../MANIFEST_SPEC.vi.md) §6 và §12. Tối thiểu cho `fx-lite`:
+1. **Viết tệp bản cài** vào inbox, ví dụ `/srv/ingat/inbox/lite-test.toml`. Mọi khóa và một ví dụ đầy đủ: [`MANIFEST_SPEC.vi.md`](../app-developers/MANIFEST_SPEC.vi.md) §6 và §12. Tối thiểu cho `fx-lite`:
 
    ```toml
    instance = 1

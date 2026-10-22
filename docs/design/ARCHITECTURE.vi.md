@@ -2,7 +2,7 @@
 
 [English](ARCHITECTURE.md) · **Tiếng Việt** (bản dịch; bản tiếng Anh là bản chuẩn)
 
-> **Nói đơn giản.** Đây là thiết kế kỹ thuật của Ingat: Ingat hứa những gì và sẽ không bao giờ làm gì, nó chạy trên một máy như thế nào, một lệnh trở thành một danh sách các bước an toàn ra sao, nó giữ tệp ở đâu, nó bảo vệ thông tin bí mật (secret) và từ chối các thiết lập ứng dụng không an toàn thế nào, nó được kiểm thử ra sao, và nó hỗ trợ những máy nào. Đây là bản đặc tả bắt buộc cho mọi người xây dựng hoặc xem xét Ingat. Để dùng Ingat, hãy bắt đầu với [README](../README.vi.md) và [hướng dẫn vận hành](runbooks/operator-guide.vi.md).
+> **Nói đơn giản.** Đây là thiết kế kỹ thuật của Ingat: Ingat hứa những gì và sẽ không bao giờ làm gì, nó chạy trên một máy như thế nào, một lệnh trở thành một danh sách các bước an toàn ra sao, nó giữ tệp ở đâu, nó bảo vệ thông tin bí mật (secret) và từ chối các thiết lập ứng dụng không an toàn thế nào, nó được kiểm thử ra sao, và nó hỗ trợ những máy nào. Đây là bản đặc tả bắt buộc cho mọi người xây dựng hoặc xem xét Ingat. Để dùng Ingat, hãy bắt đầu với [README](../../README.vi.md) và [hướng dẫn vận hành](../guide/operator-guide.vi.md).
 
 **Tìm gì ở đâu**
 
@@ -21,7 +21,7 @@
 | [§11 Máy và bảng hỗ trợ](#11-máy-và-bảng-hỗ-trợ) | Những máy nào được hỗ trợ, khác biệt giữa chúng được xử lý ra sao, danh sách kiểm tra cho một ứng dụng mới, và cấu hình máy tối thiểu |
 | [§12 Rủi ro](#12-rủi-ro) | Các rủi ro đã biết và cách giảm từng rủi ro |
 
-Trạng thái: **Decided** trừ khi có nhãn khác. Mã của M1 đã có. CI đạt trên cả ba làn kiểm thử (lane) chạy Docker thật, và bản phát hành `v0.1.0` đã đạt `selftest --host` trên máy đầu tiên; chưa có mốc (milestone) nào đạt điều kiện hoàn thành mốc (exit gate) ([README](../README.vi.md#tình-trạng)). Các nhãn trạng thái: **Decided** (Đã quyết định: một phần của thiết kế), **Planned Mx** (Đã lên kế hoạch: đã quyết định, sẽ được làm ở mốc x), **Open OD-n** (Còn mở: cần chủ sở hữu quyết định), **Unverified** (Chưa kiểm chứng: một sự thật về nền tảng mà thử nghiệm sớm (spike) M0 hoặc một thử nghiệm sớm sau đó phải xác nhận). Các quyết định của chủ sở hữu được ghi là OD-n: OD-1 (tên), OD-2 (không gian tên LisaHQ), OD-3 (repository công khai) và OD-11 (image ứng dụng được build trong CI của từng ứng dụng: ADR-0026) đã được quyết định; các quyết định còn lại vẫn mở và được ghi trong ghi chú của chủ sở hữu. Các thao tác và sơ đồ trạng thái (state machine) của chúng nằm trong [`LIFECYCLE.md`](LIFECYCLE.vi.md); cú pháp manifest nằm trong [`MANIFEST_SPEC.md`](MANIFEST_SPEC.vi.md); các mốc nằm trong [`ROADMAP.md`](ROADMAP.vi.md); lý do của từng lựa chọn nằm trong các ADR (bản ghi quyết định kiến trúc) ([`adr/README.md`](adr/README.vi.md)).
+Trạng thái: **Decided** trừ khi có nhãn khác. Mã của M1 đã có. CI đạt trên cả ba làn kiểm thử (lane) chạy Docker thật, và bản phát hành `v0.1.0` đã đạt `selftest --host` trên máy đầu tiên; chưa có mốc (milestone) nào đạt điều kiện hoàn thành mốc (exit gate) ([README](../../README.vi.md#tình-trạng)). Các nhãn trạng thái: **Decided** (Đã quyết định: một phần của thiết kế), **Planned Mx** (Đã lên kế hoạch: đã quyết định, sẽ được làm ở mốc x), **Open OD-n** (Còn mở: cần chủ sở hữu quyết định), **Unverified** (Chưa kiểm chứng: một sự thật về nền tảng mà thử nghiệm sớm (spike) M0 hoặc một thử nghiệm sớm sau đó phải xác nhận). Các quyết định của chủ sở hữu được ghi là OD-n: OD-1 (tên), OD-2 (không gian tên LisaHQ), OD-3 (repository công khai) và OD-11 (image ứng dụng được build trong CI của từng ứng dụng: ADR-0026) đã được quyết định; các quyết định còn lại vẫn mở và được ghi trong ghi chú của chủ sở hữu. Các thao tác và sơ đồ trạng thái (state machine) của chúng nằm trong [`LIFECYCLE.md`](LIFECYCLE.vi.md); cú pháp manifest nằm trong [`MANIFEST_SPEC.md`](../app-developers/MANIFEST_SPEC.vi.md); các mốc nằm trong [`ROADMAP.md`](ROADMAP.vi.md); lý do của từng lựa chọn nằm trong các ADR (bản ghi quyết định kiến trúc) ([`adr/README.md`](adr/README.vi.md)).
 
 ## 1. Sản phẩm
 
@@ -44,7 +44,7 @@ Ingat chỉ điều phối. Mỗi ứng dụng giữ các thao tác dữ liệu 
 | Bên gọi | Cách gọi | Được phép (các lớp duyệt trong [`LIFECYCLE.md`](LIFECYCLE.vi.md) §2) |
 |---|---|---|
 | Chủ sở hữu | SSH, `sudo -i`, script khởi động (wrapper) `<INGAT_ROOT>/bin/ingat` (mặc định là `/srv/ingat/bin/ingat`) | Mọi thứ; là bên gọi duy nhất được dự định để trả lời thử thách (challenge) của lớp duyệt D (class D) |
-| Agent vận hành trong phiên làm việc của chủ sở hữu trên máy | Cùng chương trình | Lớp A và B thoải mái; lớp C chỉ khi có mã băm kế hoạch (plan hash) do chủ sở hữu đưa; lớp D không bao giờ. Đây là một điểm chặn để tránh nhầm lẫn, chỉ có tác dụng với agent tuân theo nó, **không phải** một ranh giới bảo mật chống lại root: một agent tự cấp cho mình một pty (ví dụ `script -qc`) có thể gõ được thử thách. Việc ép buộc thật sự là các quy tắc cấm công cụ của chính agent đó (quyết định của chủ sở hữu OD-10). Agent phát triển (trợ lý AI) làm việc trong repository Ingat không bao giờ chạm vào một máy thật ([`CLAUDE.md`](../CLAUDE.md) §6). |
+| Agent vận hành trong phiên làm việc của chủ sở hữu trên máy | Cùng chương trình | Lớp A và B thoải mái; lớp C chỉ khi có mã băm kế hoạch (plan hash) do chủ sở hữu đưa; lớp D không bao giờ. Đây là một điểm chặn để tránh nhầm lẫn, chỉ có tác dụng với agent tuân theo nó, **không phải** một ranh giới bảo mật chống lại root: một agent tự cấp cho mình một pty (ví dụ `script -qc`) có thể gõ được thử thách. Việc ép buộc thật sự là các quy tắc cấm công cụ của chính agent đó (quyết định của chủ sở hữu OD-10). Agent phát triển (trợ lý AI) làm việc trong repository Ingat không bao giờ chạm vào một máy thật ([`CLAUDE.md`](../../CLAUDE.md) §6). |
 | Bộ lập lịch của máy (systemd timer, cron, hoặc bộ lập lịch của nền tảng như DSM Task Scheduler) | Đường dẫn tuyệt đối tới script khởi động, root, không có terminal | `ingat scheduled …`: chỉ lớp A và B |
 | CI của ứng dụng | `docker run <pinned ingat image> validate` (M1), `conformance` (M3) | Kiểm tra hợp lệ ngoại tuyến; kiểm tra tuân thủ (conformance) với Docker thật trong runner riêng của nó, không bao giờ trên một máy thật |
 
@@ -223,7 +223,7 @@ Nếu không có chứng nhận khớp, `status` hiện cần chú ý `uncertifi
 | Trình thực thi của máy `ingat-exec--host` | CLI | một thao tác ở phạm vi máy (`selftest`, dọn bớt image, tự nâng cấp) | khóa máy |
 | Container tác vụ `<instance>-x<seq>-<step>-a<attempt>` (`role=task`) | trình thực thi, `compose run --rm --no-deps -T --name … --label …` (không có `-T` với `stdin = "terminal"`, §4.3) | một lần thử của một bước | không (trình thực thi giữ khóa) |
 
-Tên bản cài không được chứa `--` ([`MANIFEST_SPEC.md`](MANIFEST_SPEC.vi.md) §6.1), nên `ingat-exec--host`, `<instance>--r<seq>` và `<instance>--t<seq>` không bao giờ trùng với một bản cài.
+Tên bản cài không được chứa `--` ([`MANIFEST_SPEC.md`](../app-developers/MANIFEST_SPEC.vi.md) §6.1), nên `ingat-exec--host`, `<instance>--r<seq>` và `<instance>--t<seq>` không bao giờ trùng với một bản cài.
 
 ### 4.2 Các thao tác thay đổi Docker chạy tách rời (ADR-0005)
 
@@ -448,7 +448,7 @@ Docker: volumes <name>_<store>_g<N> (live generations), <name>_<store>_t<seq> (d
 
 ## 8. Mẫu
 
-Phần tử argv, giá trị biến môi trường và đường dẫn trong manifest dùng một bộ từ vựng mẫu (template) đóng ([`MANIFEST_SPEC.md`](MANIFEST_SPEC.vi.md) §3). Một biến không có trong bộ đó là lỗi kiểm tra hợp lệ; không có biểu thức; giá trị sau khi điền được kiểm tra ký tự NUL và xuống dòng, và không bao giờ được chuyển cho shell.
+Phần tử argv, giá trị biến môi trường và đường dẫn trong manifest dùng một bộ từ vựng mẫu (template) đóng ([`MANIFEST_SPEC.md`](../app-developers/MANIFEST_SPEC.vi.md) §3). Một biến không có trong bộ đó là lỗi kiểm tra hợp lệ; không có biểu thức; giá trị sau khi điền được kiểm tra ký tự NUL và xuống dòng, và không bao giờ được chuyển cho shell.
 
 ## 9. Bảo mật và mô hình tin cậy
 
@@ -506,7 +506,7 @@ Các làn dind gốc là bằng chứng cho bậc hỗ trợ 1 (Engine gốc tr�
 
 ### 10.2 Ứng dụng thử (không cần repository ứng dụng)
 
-`fx-web` (máy chủ tĩnh không lưu trạng thái), `fx-lite` (image công cụ ở chế độ ứng dụng thử, mô phỏng ứng dụng SQLite: một máy chủ HTTP nhỏ với SQLite WAL, tệp, một hàng đợi gửi ra giả tôn trọng các mục `JOBS` và `DELIVERY_MODE` của nó ([`MANIFEST_SPEC.md`](MANIFEST_SPEC.vi.md) §11) và ghi dấu "đã gửi", và các lệnh migrate/backup/restore riêng của ứng dụng với kiểu khôi phục giữ hàng đợi lại), `fx-pg` (`postgres:16` làm dịch vụ dữ liệu (data service) cộng một ứng dụng shell mô phỏng các hook hai container của ứng dụng PostgreSQL, có tình huống đua về sẵn sàng do máy chủ tạm lúc khởi tạo (init-server), và một dịch vụ web từ chối khởi động khi không có route IPv4 mặc định trừ khi một chốt chặn (hold) đặt địa chỉ proxy tin cậy của nó, giống như dịch vụ web của ứng dụng PostgreSQL).
+`fx-web` (máy chủ tĩnh không lưu trạng thái), `fx-lite` (image công cụ ở chế độ ứng dụng thử, mô phỏng ứng dụng SQLite: một máy chủ HTTP nhỏ với SQLite WAL, tệp, một hàng đợi gửi ra giả tôn trọng các mục `JOBS` và `DELIVERY_MODE` của nó ([`MANIFEST_SPEC.md`](../app-developers/MANIFEST_SPEC.vi.md) §11) và ghi dấu "đã gửi", và các lệnh migrate/backup/restore riêng của ứng dụng với kiểu khôi phục giữ hàng đợi lại), `fx-pg` (`postgres:16` làm dịch vụ dữ liệu (data service) cộng một ứng dụng shell mô phỏng các hook hai container của ứng dụng PostgreSQL, có tình huống đua về sẵn sàng do máy chủ tạm lúc khởi tạo (init-server), và một dịch vụ web từ chối khởi động khi không có route IPv4 mặc định trừ khi một chốt chặn (hold) đặt địa chỉ proxy tin cậy của nó, giống như dịch vụ web của ứng dụng PostgreSQL).
 
 ### 10.3 Bộ kiểm thử bắt buộc (hành vi chỉ qua CLI)
 

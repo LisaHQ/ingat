@@ -10,7 +10,7 @@ The predecessor's installed control-plane profile drifted from app releases and 
 
 ## Decision
 
-`ingat.toml` at the app repository root, read from the deployed commit and snapshotted per deployment; `instance.toml` on the host holds values only and is never rewritten by Ingat. TOML parsed strictly with `tomllib`. Closed sets: step types, task modes (`run`, `exec`), probe kinds (`health`, `exec`, `http`), template variables. A new form needs an ADR and a named consumer ([MANIFEST_SPEC.md](../MANIFEST_SPEC.md)).
+`ingat.toml` at the app repository root, read from the deployed commit and snapshotted per deployment; `instance.toml` on the host holds values only and is never rewritten by Ingat. TOML parsed strictly with `tomllib`. Closed sets: step types, task modes (`run`, `exec`), probe kinds (`health`, `exec`, `http`), template variables. A new form needs an ADR and a named consumer ([MANIFEST_SPEC.md](../../app-developers/MANIFEST_SPEC.md)).
 
 ## Alternatives
 

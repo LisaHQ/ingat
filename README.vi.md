@@ -34,7 +34,7 @@ Ingat làm việc trên từng máy một, bằng dòng lệnh, thường là qu
 ## Ingat dành cho ai
 
 - **Những người tự chạy ứng dụng của mình** trên NAS, VPS hay máy chủ ở nhà, và muốn những phần khó và rủi ro được làm hộ một cách an toàn.
-- **Nhà phát triển ứng dụng** muốn ứng dụng của mình dễ cài và cập nhật an toàn. Họ thêm một tệp, `ingat.toml`, vào repository của ứng dụng ([cách làm](docs/MANIFEST_SPEC.vi.md)).
+- **Nhà phát triển ứng dụng** muốn ứng dụng của mình dễ cài và cập nhật an toàn. Họ thêm một tệp, `ingat.toml`, vào repository của ứng dụng ([cách làm](docs/app-developers/MANIFEST_SPEC.vi.md)).
 - **Trợ lý AI chạy máy chủ thay cho chủ sở hữu.** Ingat được làm như một bộ dây an toàn cho các trợ lý này: chúng được tự do xem tình hình và tạo bản sao lưu, nhưng mọi thay đổi cần chủ sở hữu duyệt, và việc gì có thể làm mất dữ liệu thì chỉ một người gõ tại một terminal thật mới duyệt được. Quy tắc này đúng với những trợ lý tuân theo nó; chính thiết lập công cụ của chúng buộc chúng tuân theo. Cách để chủ sở hữu giao một kế hoạch đã duyệt cho trợ lý sẽ có ở M2.
 
 ## Vì sao dữ liệu của bạn an toàn
@@ -44,26 +44,26 @@ Ingat làm việc trên từng máy một, bằng dòng lệnh, thường là qu
 | **Luôn sao lưu trước mọi thay đổi rủi ro** | Trước một lần cập nhật chạm tới dữ liệu, Ingat dừng những phần của ứng dụng thay đổi dữ liệu, tạo một bản sao lưu, niêm phong nó bằng mã kiểm tra và kiểm tra nó. Chỉ sau đó nó mới thay đổi gì đó. Nếu sao lưu thất bại, không có gì bị thay thế. |
 | **Không ghi đè lên thứ gì** | Một lần khôi phục đổ dữ liệu vào một vùng dữ liệu mới, tách riêng, rồi mới chuyển ứng dụng sang vùng đó. Dữ liệu trước đó của bạn vẫn giữ nguyên. (Khôi phục sẽ có ở M2; quy tắc này đã là một phần của thiết kế.) |
 | **Bản sao lưu được chứng minh, không phải hy vọng** | Một bản sao lưu chỉ được tính là "đã thử khôi phục" sau khi Ingat khôi phục đúng bản đó vào một bản thử riêng của ứng dụng, không chạm được tới dữ liệu đang dùng của bạn, và các bước kiểm tra riêng của ứng dụng đều đạt. |
-| **Bị ngắt giữa chừng vẫn an toàn** | Các thay đổi chạy trong một trình trợ giúp riêng trên máy, không nằm trong cửa sổ SSH của bạn, nên mất kết nối không làm dừng gì cả. Ngoại lệ duy nhất là một tác vụ trò chuyện với bạn ngay trong terminal (ví dụ một bước thiết lập của lần cài đầu): nó chạy từ cửa sổ của bạn, nên nếu mất kết nối, hãy chạy lệnh tiếp theo và làm theo hướng dẫn của nó ([hướng dẫn vận hành §8](docs/runbooks/operator-guide.vi.md#8-khi-có-sự-cố)). Ingat ghi lại từng bước trước khi làm, nên một việc bị ngắt luôn có thể làm tiếp hoặc hoàn tác. |
+| **Bị ngắt giữa chừng vẫn an toàn** | Các thay đổi chạy trong một trình trợ giúp riêng trên máy, không nằm trong cửa sổ SSH của bạn, nên mất kết nối không làm dừng gì cả. Ngoại lệ duy nhất là một tác vụ trò chuyện với bạn ngay trong terminal (ví dụ một bước thiết lập của lần cài đầu): nó chạy từ cửa sổ của bạn, nên nếu mất kết nối, hãy chạy lệnh tiếp theo và làm theo hướng dẫn của nó ([hướng dẫn vận hành §8](docs/guide/operator-guide.vi.md#8-khi-có-sự-cố)). Ingat ghi lại từng bước trước khi làm, nên một việc bị ngắt luôn có thể làm tiếp hoặc hoàn tác. |
 | **Chỉ xóa những gì của chính nó** | Ingat chỉ xóa những thứ nó đã tạo, chứng minh được là của nó, và đã liệt kê trước trong một kế hoạch. Nó không bao giờ chạy `docker system prune` hay `docker compose down -v`, và không bao giờ đụng tới container, volume hay network mà nó không tạo ra. |
 | **Mật khẩu được giữ kín** | Mật khẩu và khóa chỉ nằm trong các tệp mà chỉ root đọc được. Ingat không bao giờ đưa chúng lên dòng lệnh, vào bản ghi, vào bản sao lưu, vào log hay vào thông báo lỗi. |
 | **Không có nút "cưỡng ép"** | Không có `--force`, cũng không có `--yes`. Khi Ingat từ chối, chưa có gì thay đổi, và thông báo nêu đúng lệnh an toàn cần chạy thay vào đó. |
 | **Chỉ chạy trên máy đã kiểm thử** | Các lệnh có thay đổi chỉ chạy trên những phiên bản Docker mà bản phát hành này đã được kiểm thử cùng, và chỉ sau khi Ingat đã kiểm thử máy của bạn (`ingat selftest --host`). |
 
-Các quy tắc chính xác là 17 quy tắc an toàn bắt buộc trong [`docs/LIFECYCLE.vi.md`](docs/LIFECYCLE.vi.md#1-quy-tắc-an-toàn-bắt-buộc). Chúng được viết bằng mã, và không có thiết lập nào tắt được chúng.
+Các quy tắc chính xác là 17 quy tắc an toàn bắt buộc trong [`docs/design/LIFECYCLE.vi.md`](docs/design/LIFECYCLE.vi.md#1-quy-tắc-an-toàn-bắt-buộc). Chúng được viết bằng mã, và không có thiết lập nào tắt được chúng.
 
 ## Bắt đầu
 
 ### Bạn cần gì
 
 - Một máy có **Linux, Docker Engine 24.0 trở lên và Docker Compose v2**: một máy chủ, máy ảo hoặc VPS, một bo mạch nhỏ, hoặc một NAS chạy được Docker. Bộ xử lý: `x86_64`, hoặc `arm64` với Docker 29.9.
-- **Một phiên bản Docker đã kiểm thử, để được thay đổi.** Ingat chỉ thay đổi trên một phiên bản Docker mà bản phát hành này đã được kiểm thử cùng: hiện là 24.0 hoặc 29.9 trên `x86_64`, 29.9 trên `arm64`. Trên một phiên bản khác từ 24.0 trở lên, nó chỉ xem được và tạo được những bản sao lưu không cần dừng ứng dụng. Đừng để Docker tự cập nhật ([hướng dẫn vận hành §1](docs/runbooks/operator-guide.vi.md#1-trước-khi-bắt-đầu)).
+- **Một phiên bản Docker đã kiểm thử, để được thay đổi.** Ingat chỉ thay đổi trên một phiên bản Docker mà bản phát hành này đã được kiểm thử cùng: hiện là 24.0 hoặc 29.9 trên `x86_64`, 29.9 trên `arm64`. Trên một phiên bản khác từ 24.0 trở lên, nó chỉ xem được và tạo được những bản sao lưu không cần dừng ứng dụng. Đừng để Docker tự cập nhật ([hướng dẫn vận hành §1](docs/guide/operator-guide.vi.md#1-trước-khi-bắt-đầu)).
 - **Quyền root**, thường qua SSH (`sudo -i`).
 - Một **bộ lập lịch** cho các việc chạy hằng đêm (systemd timer, cron, hoặc Task Scheduler trên NAS Synology) có gửi email cho bạn khi một việc bị lỗi.
 - Một công cụ **chép các bản sao lưu sang nơi khác** (restic, borg, rsync, hoặc Hyper Backup trên NAS Synology).
 - **Bộ nhớ:** bản thân Ingat cần rất ít. Hãy tính cho các ứng dụng của bạn, cộng thêm một bản sao các dịch vụ dữ liệu của một ứng dụng trong lúc thử khôi phục. Gợi ý, chưa đo thực tế: ít nhất 4 GB cho một ứng dụng dùng PostgreSQL, 8 GB trở lên cho nhiều ứng dụng có thử khôi phục hằng tuần.
 
-Danh sách đầy đủ: [yêu cầu tối thiểu với máy](docs/ARCHITECTURE.vi.md#114-yêu-cầu-tối-thiểu-cho-máy).
+Danh sách đầy đủ: [yêu cầu tối thiểu với máy](docs/design/ARCHITECTURE.vi.md#114-yêu-cầu-tối-thiểu-cho-máy).
 
 > [!IMPORTANT]
 > **Bản phát hành đầu tiên chưa được công bố.** Phiên bản 0.1.0 đang là bản nháp trên GitHub. Khi nó được công bố, hãy tải `install.sh`, `facts.sh` và `SHA256SUMS` từ [trang phát hành](https://github.com/LisaHQ/ingat/releases) vào cùng một thư mục (ví dụ bằng `curl -fLO https://github.com/LisaHQ/ingat/releases/download/v0.1.0/install.sh`, và làm tương tự với `facts.sh` và `SHA256SUMS`), rồi làm theo các bước dưới đây.
@@ -105,7 +105,7 @@ Máy không có internet? Thêm `--from-tar ingat-0.1.0-amd64.tar` (hoặc `inga
 | `--from-tar FILE` | Nạp tệp phát hành này bằng `docker load` thay vì tải về (mã SHA-256 của nó phải có trong `SHA256SUMS`) |
 | `--link PATH` | Tạo thêm một lối tắt tới lệnh `ingat` (việc chạy theo lịch luôn dùng đường dẫn đầy đủ) |
 
-Trình cài đặt tạo `INGAT_ROOT` nếu chưa có, với quyền `root:root 0700` (chỉ root mở được), tạo volume `ingat-probe` (có gắn nhãn của Ingat), tự kiểm tra image mới, rồi ghi lệnh `ingat` vào `<root>/bin/ingat`. Chạy lại với cùng `--root` trên một máy đã có Ingat thì đó là nâng cấp: nó từ chối khi còn thao tác chưa xong (exit 2), chạy `selftest --host` với phiên bản mới, giữ phiên bản hiện tại nếu kiểm tra đó thất bại (exit 3), còn không thì giữ lệnh cũ ở `bin/ingat.prev`. Chi tiết: [`docs/ARCHITECTURE.vi.md`](docs/ARCHITECTURE.vi.md#34-cài-đặt) §3.4-§3.5.
+Trình cài đặt tạo `INGAT_ROOT` nếu chưa có, với quyền `root:root 0700` (chỉ root mở được), tạo volume `ingat-probe` (có gắn nhãn của Ingat), tự kiểm tra image mới, rồi ghi lệnh `ingat` vào `<root>/bin/ingat`. Chạy lại với cùng `--root` trên một máy đã có Ingat thì đó là nâng cấp: nó từ chối khi còn thao tác chưa xong (exit 2), chạy `selftest --host` với phiên bản mới, giữ phiên bản hiện tại nếu kiểm tra đó thất bại (exit 3), còn không thì giữ lệnh cũ ở `bin/ingat.prev`. Chi tiết: [`docs/design/ARCHITECTURE.vi.md`](docs/design/ARCHITECTURE.vi.md#34-cài-đặt) §3.4-§3.5.
 
 </details>
 
@@ -126,17 +126,17 @@ Trên NAS, đưa cho `facts.sh` cùng hai thư mục đó: `sh facts.sh --root /
 
 ### Bước 3: thêm ứng dụng đầu tiên
 
-Ứng dụng của bạn cần có `ingat.toml` trong repository và các image do CI của nó build ([danh sách việc cho nhà phát triển ứng dụng](docs/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát)). Sau đó:
+Ứng dụng của bạn cần có `ingat.toml` trong repository và các image do CI của nó build ([danh sách việc cho nhà phát triển ứng dụng](docs/design/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát)). Sau đó:
 
-1. **Mô tả bản cài này của ứng dụng** (một *bản cài*, instance) trong một tệp nhỏ ở thư mục nhận tệp (inbox) của Ingat, ví dụ `/srv/ingat/inbox/lite-test.toml` (trên NAS: `/volume1/ingat/inbox/lite-test.toml`): tên, nơi chứa mã nguồn, cổng và địa chỉ, giữ lại bao nhiêu bản sao lưu. [Ví dụ](docs/runbooks/operator-guide.vi.md#3-thêm-ứng-dụng-của-bạn).
+1. **Mô tả bản cài này của ứng dụng** (một *bản cài*, instance) trong một tệp nhỏ ở thư mục nhận tệp (inbox) của Ingat, ví dụ `/srv/ingat/inbox/lite-test.toml` (trên NAS: `/volume1/ingat/inbox/lite-test.toml`): tên, nơi chứa mã nguồn, cổng và địa chỉ, giữ lại bao nhiêu bản sao lưu. [Ví dụ](docs/guide/operator-guide.vi.md#3-thêm-ứng-dụng-của-bạn).
 2. **Đăng ký nó:** `ingat init lite-test --config /srv/ingat/inbox/lite-test.toml --ref v1.2.0`, rồi gõ `lite-test` để xác nhận.
 3. **Cài nó:** `ingat deploy lite-test v1.2.0`. Ingat hiện kế hoạch từng bước; gõ `lite-test` để duyệt. Nếu ứng dụng có các bước thiết lập, lần cài sẽ dừng giữa chừng (`paused`, exit 4) và nói bạn cần làm gì; làm xong, hãy chạy `ingat resume lite-test`.
 4. **Xem nó:** `ingat status lite-test`.
-5. **Lên lịch** sao lưu hằng đêm và thử khôi phục hằng tuần ([cách làm](docs/runbooks/operator-guide.vi.md#7-việc-chạy-hằng-đêm-và-hằng-tuần)).
+5. **Lên lịch** sao lưu hằng đêm và thử khôi phục hằng tuần ([cách làm](docs/guide/operator-guide.vi.md#7-việc-chạy-hằng-đêm-và-hằng-tuần)).
 
 Ingat chạy bên trong một container chỉ nhìn thấy hai thư mục của chính nó. Hãy đặt mọi tệp bạn đưa cho nó (tệp bản cài, mã nguồn ứng dụng đã tải về, dữ liệu đầu vào cho tác vụ) vào inbox, `INGAT_ROOT/inbox/`.
 
-[Hướng dẫn vận hành](docs/runbooks/operator-guide.vi.md) đi qua tất cả những bước này chi tiết hơn.
+[Hướng dẫn vận hành](docs/guide/operator-guide.vi.md) đi qua tất cả những bước này chi tiết hơn.
 
 ## Dùng hằng ngày
 
@@ -162,7 +162,7 @@ Khi còn việc cần làm tiếp, dòng cuối `next:` nêu lệnh cần chạy
 <details>
 <summary>Mọi lệnh trong phiên bản 0.1.0 (mốc M1)</summary>
 
-Chạy bằng root. Các lớp duyệt: A chỉ đọc; B chỉ thêm (bản sao lưu, kết quả kiểm tra) hoặc xóa những gì quy tắc giữ lại của bạn cho phép; C thay đổi một thứ gì đó và yêu cầu bạn gõ tên bản cài (với `host init` là đúng tên mà lệnh `hostname` in ra) tại một terminal ([`docs/LIFECYCLE.vi.md`](docs/LIFECYCLE.vi.md#2-lớp-duyệt-và-các-lệnh) §2). Mã thoát nằm ở [§6](docs/LIFECYCLE.vi.md#6-mã-thoát-mọi-lệnh). Đường dẫn mà `init --config` và `validate` nhận phải là đường dẫn đầy đủ nằm trong một trong hai thư mục của Ingat.
+Chạy bằng root. Các lớp duyệt: A chỉ đọc; B chỉ thêm (bản sao lưu, kết quả kiểm tra) hoặc xóa những gì quy tắc giữ lại của bạn cho phép; C thay đổi một thứ gì đó và yêu cầu bạn gõ tên bản cài (với `host init` là đúng tên mà lệnh `hostname` in ra) tại một terminal ([`docs/design/LIFECYCLE.vi.md`](docs/design/LIFECYCLE.vi.md#2-lớp-duyệt-và-các-lệnh) §2). Mã thoát nằm ở [§6](docs/design/LIFECYCLE.vi.md#6-mã-thoát-mọi-lệnh). Đường dẫn mà `init --config` và `validate` nhận phải là đường dẫn đầy đủ nằm trong một trong hai thư mục của Ingat.
 
 | Lệnh | Việc nó làm |
 |---|---|
@@ -213,11 +213,11 @@ Tính đến ngày 2026-10-22.
 
 **Đã quyết định, chưa làm:**
 
-- **Bộ cung cấp dữ liệu (data provider)** ([ADR-0031](docs/adr/0031-data-providers.vi.md)): một ứng dụng liệt kê các bộ dữ liệu của nó (PostgreSQL, MySQL, MariaDB, SQLite, tệp thường), và các image hỗ trợ được ghim của chính Ingat sẽ sao lưu, kiểm tra và khôi phục chúng, nên ứng dụng không cần lệnh sao lưu riêng. Một danh mục công khai các ứng dụng đã được chứng nhận. Bản mô tả công khai mà các image provider phải tuân theo (contract) và các image đầu tiên làm song song với M2, phần còn lại ngay sau khi M2 đạt điều kiện hoàn thành.
-- **`ingat ui`** ([ADR-0032](docs/adr/0032-local-session-bound-web-view.vi.md)): một trang web chỉ để xem cho phiên làm việc của bạn, chỉ mở được ngay trên máy đó, có lời giải thích dễ hiểu và một công cụ viết sẵn lệnh cho bạn. Phiên bản đầu tiên của nó không có quyền truy cập Docker. Nó đến sau phần giao kế hoạch của M2.
-- **`ingat report` và `ingat support-bundle`** ([ADR-0033](docs/adr/0033-commercial-boundary-report-and-hosted-service.vi.md)): một bản tóm tắt tình trạng gửi ra ngoài mà bạn tự đăng ký, và một gói thông tin để gửi kèm khi bạn nhờ hỗ trợ. Cùng M2 hoặc M3.
+- **Bộ cung cấp dữ liệu (data provider)** ([ADR-0031](docs/design/adr/0031-data-providers.vi.md)): một ứng dụng liệt kê các bộ dữ liệu của nó (PostgreSQL, MySQL, MariaDB, SQLite, tệp thường), và các image hỗ trợ được ghim của chính Ingat sẽ sao lưu, kiểm tra và khôi phục chúng, nên ứng dụng không cần lệnh sao lưu riêng. Một danh mục công khai các ứng dụng đã được chứng nhận. Bản mô tả công khai mà các image provider phải tuân theo (contract) và các image đầu tiên làm song song với M2, phần còn lại ngay sau khi M2 đạt điều kiện hoàn thành.
+- **`ingat ui`** ([ADR-0032](docs/design/adr/0032-local-session-bound-web-view.vi.md)): một trang web chỉ để xem cho phiên làm việc của bạn, chỉ mở được ngay trên máy đó, có lời giải thích dễ hiểu và một công cụ viết sẵn lệnh cho bạn. Phiên bản đầu tiên của nó không có quyền truy cập Docker. Nó đến sau phần giao kế hoạch của M2.
+- **`ingat report` và `ingat support-bundle`** ([ADR-0033](docs/design/adr/0033-commercial-boundary-report-and-hosted-service.vi.md)): một bản tóm tắt tình trạng gửi ra ngoài mà bạn tự đăng ký, và một gói thông tin để gửi kèm khi bạn nhờ hỗ trợ. Cùng M2 hoặc M3.
 
-**Miễn phí, và sẽ luôn miễn phí.** Ingat là mã nguồn mở theo giấy phép Apache License 2.0. Mọi thứ dùng để giữ gìn hay khôi phục dữ liệu của bạn sẽ không bao giờ phải trả tiền, không bao giờ bị giới hạn và không bao giờ phụ thuộc vào gói dịch vụ. Một trang tình trạng do bên Ingat vận hành có thể trở thành dịch vụ trả phí sau này ([ADR-0033](docs/adr/0033-commercial-boundary-report-and-hosted-service.vi.md)).
+**Miễn phí, và sẽ luôn miễn phí.** Ingat là mã nguồn mở theo giấy phép Apache License 2.0. Mọi thứ dùng để giữ gìn hay khôi phục dữ liệu của bạn sẽ không bao giờ phải trả tiền, không bao giờ bị giới hạn và không bao giờ phụ thuộc vào gói dịch vụ. Một trang tình trạng do bên Ingat vận hành có thể trở thành dịch vụ trả phí sau này ([ADR-0033](docs/design/adr/0033-commercial-boundary-report-and-hosted-service.vi.md)).
 
 ### Lộ trình tóm tắt
 
@@ -230,7 +230,7 @@ Tính đến ngày 2026-10-22.
 | M4 Phục hồi sau sự cố và tiếp quản ứng dụng | Khôi phục trên máy khác, nhập bản sao lưu, tiếp quản một ứng dụng đã cài không qua Ingat; chứng nhận một máy chủ Linux thông thường (khi có một máy như vậy) | Đã lên kế hoạch |
 | M5 Ingat tự nâng cấp | Lệnh tự nâng cấp và lệnh chuyển đổi bản ghi | Khi cần |
 
-Chi tiết, quy mô và điều kiện hoàn thành: [`docs/ROADMAP.vi.md`](docs/ROADMAP.vi.md).
+Chi tiết, quy mô và điều kiện hoàn thành: [`docs/design/ROADMAP.vi.md`](docs/design/ROADMAP.vi.md).
 
 ## Chạy trên máy nào
 
@@ -242,12 +242,12 @@ Ingat xử lý khác biệt giữa các máy bằng cách kiểm tra mỗi máy 
 | **Được hỗ trợ, theo từng bản build đã chứng nhận** | Thiết bị dùng bản Docker do chính hãng build. Đầu tiên: Synology DSM 7.4 trở lên với Container Manager 24.0.2 trở lên. Đã chứng nhận đến nay: DSM 7.4.1 build 90080 với Container Manager 24.0.2-1706 trên `x86_64` | Một chứng nhận được commit cho từng dòng build, cộng với `ingat selftest --host` sau mỗi lần cập nhật |
 | **Không được hỗ trợ** | Rootless Docker; Docker Desktop trên Windows hoặc macOS để dùng thật (chỉ để phát triển); Podman; Kubernetes hoặc Swarm; nhiều máy cùng lúc; Docker Engine cũ hơn 24.0, tức là loại bỏ Synology DSM 7.1 trở về trước với gói Docker cũ | Không có kế hoạch bổ sung trong v1 |
 
-Khi bản build hệ thống và Docker của một máy chưa được chứng nhận, Ingat vẫn cho bạn xem mọi thứ và vẫn tiếp tục các bản sao lưu không cần dừng ứng dụng, nhưng từ chối mọi thay đổi. Thêm: [`docs/ARCHITECTURE.vi.md`](docs/ARCHITECTURE.vi.md#11-máy-và-bảng-hỗ-trợ) §11.
+Khi bản build hệ thống và Docker của một máy chưa được chứng nhận, Ingat vẫn cho bạn xem mọi thứ và vẫn tiếp tục các bản sao lưu không cần dừng ứng dụng, nhưng từ chối mọi thay đổi. Thêm: [`docs/design/ARCHITECTURE.vi.md`](docs/design/ARCHITECTURE.vi.md#11-máy-và-bảng-hỗ-trợ) §11.
 
 <details>
 <summary>Các bậc hỗ trợ và đặc điểm nền tảng, theo lời của bản đặc tả</summary>
 
-Tóm tắt [`docs/ARCHITECTURE.vi.md`](docs/ARCHITECTURE.vi.md) §11.1-§11.2:
+Tóm tắt [`docs/design/ARCHITECTURE.vi.md`](docs/design/ARCHITECTURE.vi.md) §11.1-§11.2:
 
 - **Bậc hỗ trợ 1 (support tier 1):** máy Linux chạy Docker Engine bản gốc (docker-ce hoặc gói của bản phân phối) trên một dòng Engine mà CI kiểm thử, trên `x86_64`, hoặc trên `arm64` với những dòng mà làn arm64 đã đạt (chỉ 29.x). Các làn CI bao phủ bậc này từ M1; các lệnh có thay đổi (bậc cổng 2, gate tier 2) cần một chứng nhận `ingat selftest --host` tại máy cho bản build nền tảng của máy đó. Chứng nhận Linux thông thường đầu tiên được commit đã lên kế hoạch (Planned) cho phần việc 12 của M4, khi có một máy như vậy.
 - **Bậc hỗ trợ 2 (support tier 2):** các engine do hãng build trên thiết bị, trước hết là Synology DSM 7.4 trở lên với Container Manager 24.0.2 trở lên (bản build Engine 24.0.2 của Synology, API 1.43). Mỗi dòng bản build nền tảng cần một chứng nhận được commit theo đầy đủ danh sách kiểm tra, và mỗi lần cập nhật cần một `ingat selftest --host` tại máy; trong lúc chờ, các bản sao lưu hằng đêm không cần dừng ứng dụng vẫn tiếp tục, còn các lần thử khôi phục theo lịch thì từ chối. DSM 7.4 hết thời gian bảo trì vào khoảng tháng 6 năm 2028, nên việc chuyển sang dòng DSM tiếp theo là một lần chứng nhận lại đã được tính trước.
@@ -264,18 +264,20 @@ Tóm tắt [`docs/ARCHITECTURE.vi.md`](docs/ARCHITECTURE.vi.md) §11.1-§11.2:
 - Một cơ sở dữ liệu chỉ được coi là sẵn sàng sau khi phép kiểm tra sẵn sàng mà ứng dụng khai báo cho nó đã đạt, chứ không chỉ vì container của nó đã khởi động.
 - Mỗi thao tác có một nhật ký các bước: mỗi bước được ghi lại trước khi chạy, và được kiểm tra trước khi thử lại. Mỗi ứng dụng chỉ có tối đa một thao tác đang mở tại một thời điểm.
 
-Toàn bộ thiết kế: [`docs/ARCHITECTURE.vi.md`](docs/ARCHITECTURE.vi.md) và [`docs/LIFECYCLE.vi.md`](docs/LIFECYCLE.vi.md).
+Toàn bộ thiết kế: [`docs/design/ARCHITECTURE.vi.md`](docs/design/ARCHITECTURE.vi.md) và [`docs/design/LIFECYCLE.vi.md`](docs/design/LIFECYCLE.vi.md).
 
 ## Tìm hiểu thêm
 
 | Nếu bạn là… | Hãy đọc |
 |---|---|
-| Người chạy Ingat trên máy của mình | [Hướng dẫn vận hành](docs/runbooks/operator-guide.vi.md): cài đặt, kiểm tra máy, thêm ứng dụng, việc hằng ngày, việc chạy theo lịch, phải làm gì khi có sự cố |
-| Người làm cho ứng dụng của mình chạy được với Ingat | [`docs/MANIFEST_SPEC.vi.md`](docs/MANIFEST_SPEC.vi.md): các tệp `ingat.toml` và `instance.toml`, kèm ví dụ đầy đủ; [danh sách việc khi đưa ứng dụng vào](docs/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) |
-| Người tò mò Ingat hoạt động bên trong ra sao | [`docs/ARCHITECTURE.vi.md`](docs/ARCHITECTURE.vi.md) (thiết kế, bảo mật, kiểm thử, các máy được hỗ trợ) và [`docs/LIFECYCLE.vi.md`](docs/LIFECYCLE.vi.md) (quy tắc an toàn bắt buộc, duyệt, từng thao tác theo từng bước, mã thoát) |
-| Người theo dõi kế hoạch | [`docs/ROADMAP.vi.md`](docs/ROADMAP.vi.md): các mốc, điều kiện hoàn thành, và những việc chờ một điều kiện kích hoạt |
-| Người muốn biết vì sao một lựa chọn được đưa ra | [`docs/adr/`](docs/adr/README.vi.md): mỗi lựa chọn có một bản ghi quyết định |
+| Người chạy Ingat trên máy của mình | [Hướng dẫn vận hành](docs/guide/operator-guide.vi.md): cài đặt, kiểm tra máy, thêm ứng dụng, việc hằng ngày, việc chạy theo lịch, phải làm gì khi có sự cố |
+| Người làm cho ứng dụng của mình chạy được với Ingat | [`docs/app-developers/MANIFEST_SPEC.vi.md`](docs/app-developers/MANIFEST_SPEC.vi.md): các tệp `ingat.toml` và `instance.toml`, kèm ví dụ đầy đủ; [danh sách việc khi đưa ứng dụng vào](docs/design/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) |
+| Người tò mò Ingat hoạt động bên trong ra sao | [`docs/design/ARCHITECTURE.vi.md`](docs/design/ARCHITECTURE.vi.md) (thiết kế, bảo mật, kiểm thử, các máy được hỗ trợ) và [`docs/design/LIFECYCLE.vi.md`](docs/design/LIFECYCLE.vi.md) (quy tắc an toàn bắt buộc, duyệt, từng thao tác theo từng bước, mã thoát) |
+| Người theo dõi kế hoạch | [`docs/design/ROADMAP.vi.md`](docs/design/ROADMAP.vi.md): các mốc, điều kiện hoàn thành, và những việc chờ một điều kiện kích hoạt |
+| Người muốn biết vì sao một lựa chọn được đưa ra | [`docs/design/adr/`](docs/design/adr/README.vi.md): mỗi lựa chọn có một bản ghi quyết định |
 | Người đóng góp, hoặc một agent phát triển (trợ lý AI) | [`CLAUDE.md`](CLAUDE.md) trước tiên: các quy tắc cho mọi thay đổi |
+
+Tài liệu được xếp theo người đọc: [`docs/guide/`](docs/guide/) cho người chạy Ingat, [`docs/app-developers/`](docs/app-developers/) cho nhà phát triển ứng dụng, và [`docs/design/`](docs/design/) cho thiết kế, kế hoạch và các bản ghi quyết định.
 
 Mỗi tài liệu, trừ [`CLAUDE.md`](CLAUDE.md), đều có một bản tiếng Việt bên cạnh, tên là `<name>.vi.md`. Bản tiếng Anh là bản chuẩn.
 
@@ -324,7 +326,7 @@ Mỗi tài liệu, trừ [`CLAUDE.md`](CLAUDE.md), đều có một bản tiến
 | Thư mục gốc theo hồ sơ DSM | `/volume1/ingat` (không bao giờ là shared folder) và `/volume1/ingat-backups` (một shared folder của DSM, chỉ đọc với quản trị viên, chỉ root ghi, là nguồn cho Hyper Backup); script khởi động `/volume1/ingat/bin/ingat`; truyền vào lúc cài, không phải mặc định trong mã |
 | Tên Docker suy ra | Project Compose `<instance>`, trình thực thi `ingat-exec-<instance>`, các project cách ly `<instance>--r<seq>` (khôi phục) và `<instance>--t<seq>` (thử khôi phục), volume `<instance>_<store>_g<N>` |
 
-Trong mã, các tên này chỉ nằm trong `src/ingat/brand.py` và mẫu script khởi động ([ADR-0003](docs/adr/0003-name-namespaces-and-brand-module.vi.md)); tài liệu dùng chúng nguyên văn.
+Trong mã, các tên này chỉ nằm trong `src/ingat/brand.py` và mẫu script khởi động ([ADR-0003](docs/design/adr/0003-name-namespaces-and-brand-module.vi.md)); tài liệu dùng chúng nguyên văn.
 
 ## Đóng góp và agent AI
 

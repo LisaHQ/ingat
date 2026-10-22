@@ -20,4 +20,4 @@ Một tệp quy tắc cấp quyền (policy file of grants) (bị loại: từng
 
 ## Hệ quả
 
-Agent vận hành (trợ lý AI) có thể chuẩn bị mọi thứ và áp dụng lớp C với mã băm của chủ sở hữu; lớp D chỉ dành cho riêng chủ sở hữu. CLI không phân biệt được agent với chủ sở hữu (một agent có pty có thể gõ mã thử thách), nên ranh giới này chỉ đứng vững với những agent tuân theo nó; các quy tắc chặn công cụ (tool deny rules) của chính các agent bảo đảm điều đó (quyết định của chủ sở hữu OD-10). Agent phát triển trong repository Ingat không bao giờ đụng tới máy thật ([CLAUDE.md](../../CLAUDE.md) §6).
+Agent vận hành (trợ lý AI) có thể chuẩn bị mọi thứ và áp dụng lớp C với mã băm của chủ sở hữu; lớp D chỉ dành cho riêng chủ sở hữu. CLI không phân biệt được agent với chủ sở hữu (một agent có pty có thể gõ mã thử thách), nên ranh giới này chỉ đứng vững với những agent tuân theo nó; các quy tắc chặn công cụ (tool deny rules) của chính các agent bảo đảm điều đó (quyết định của chủ sở hữu OD-10). Agent phát triển trong repository Ingat không bao giờ đụng tới máy thật ([CLAUDE.md](../../../CLAUDE.md) §6).

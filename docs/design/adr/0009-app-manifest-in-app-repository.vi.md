@@ -12,7 +12,7 @@ Hồ sơ điều khiển (control-plane profile) được cài trên máy của 
 
 ## Quyết định
 
-Manifest ứng dụng (`ingat.toml`) nằm ở thư mục gốc của repository ứng dụng, được đọc từ commit được triển khai và được chụp lại một bản cho mỗi lần triển khai; tệp cấu hình bản cài (`instance.toml`) trên máy chỉ chứa giá trị và không bao giờ bị Ingat ghi lại. TOML được phân tích chặt chẽ bằng `tomllib`. Các tập đóng: loại bước, chế độ tác vụ (`run`, `exec`), kiểu phép kiểm tra sẵn sàng (probe) (`health`, `exec`, `http`), biến mẫu. Một dạng mới cần một ADR và một ứng dụng cụ thể có tên cần đến nó ([MANIFEST_SPEC.md](../MANIFEST_SPEC.vi.md)).
+Manifest ứng dụng (`ingat.toml`) nằm ở thư mục gốc của repository ứng dụng, được đọc từ commit được triển khai và được chụp lại một bản cho mỗi lần triển khai; tệp cấu hình bản cài (`instance.toml`) trên máy chỉ chứa giá trị và không bao giờ bị Ingat ghi lại. TOML được phân tích chặt chẽ bằng `tomllib`. Các tập đóng: loại bước, chế độ tác vụ (`run`, `exec`), kiểu phép kiểm tra sẵn sàng (probe) (`health`, `exec`, `http`), biến mẫu. Một dạng mới cần một ADR và một ứng dụng cụ thể có tên cần đến nó ([MANIFEST_SPEC.md](../../app-developers/MANIFEST_SPEC.vi.md)).
 
 ## Các phương án khác
 

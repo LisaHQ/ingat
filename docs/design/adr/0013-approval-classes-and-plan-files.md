@@ -18,4 +18,4 @@ A policy file of grants (rejected: a blocker in the predecessor). `--approve` fo
 
 ## Consequences
 
-Operations agents can prepare everything and apply class C with the owner's hash; class D is meant for the owner alone. The CLI cannot tell an agent from the owner (an agent with a pty can type a challenge), so the boundary holds only for agents that obey it; the agents' own tool deny rules enforce it (owner decision OD-10). Development agents in the Ingat repository never touch a real host ([CLAUDE.md](../../CLAUDE.md) §6).
+Operations agents can prepare everything and apply class C with the owner's hash; class D is meant for the owner alone. The CLI cannot tell an agent from the owner (an agent with a pty can type a challenge), so the boundary holds only for agents that obey it; the agents' own tool deny rules enforce it (owner decision OD-10). Development agents in the Ingat repository never touch a real host ([CLAUDE.md](../../../CLAUDE.md) §6).

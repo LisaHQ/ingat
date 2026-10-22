@@ -2,7 +2,7 @@
 
 **English** · [Tiếng Việt](ARCHITECTURE.vi.md)
 
-> **In plain words.** This is the technical design of Ingat: what it promises and what it will never do, how it runs on a machine, how a command becomes a list of safe steps, where it keeps its files, how it guards secrets and refuses unsafe app settings, how it is tested, and which machines it supports. It is the binding specification for everyone who builds or reviews Ingat. To use Ingat, start with the [README](../README.md) and the [operator guide](runbooks/operator-guide.md).
+> **In plain words.** This is the technical design of Ingat: what it promises and what it will never do, how it runs on a machine, how a command becomes a list of safe steps, where it keeps its files, how it guards secrets and refuses unsafe app settings, how it is tested, and which machines it supports. It is the binding specification for everyone who builds or reviews Ingat. To use Ingat, start with the [README](../../README.md) and the [operator guide](../guide/operator-guide.md).
 
 **Where to find what**
 
@@ -21,7 +21,7 @@
 | [§11 Hosts and support matrix](#11-hosts-and-support-matrix) | Which machines are supported, how their differences are handled, the checklist for a new app, and the minimum machine |
 | [§12 Risks](#12-risks) | Known risks and how each one is reduced |
 
-Status: **Decided** unless tagged otherwise. The M1 code exists. CI passes on all three real-Docker lanes, and release `v0.1.0` passed `selftest --host` on the first host; no exit gate has passed yet ([README](../README.md#status)). Status tags: **Decided** (part of the design), **Planned Mx** (decided, built in milestone x), **Open OD-n** (needs an owner decision), **Unverified** (a platform fact the M0 spike or a later spike must confirm). Owner decisions are cited as OD-n: OD-1 (name), OD-2 (LisaHQ namespace), OD-3 (public repository) and OD-11 (app images built in each app's CI: ADR-0026) are decided; the others are open and recorded in the owner's notes. Operations and their state machines are in [`LIFECYCLE.md`](LIFECYCLE.md); manifest syntax is in [`MANIFEST_SPEC.md`](MANIFEST_SPEC.md); milestones are in [`ROADMAP.md`](ROADMAP.md); the reasons for each choice are in the ADRs ([`adr/README.md`](adr/README.md)).
+Status: **Decided** unless tagged otherwise. The M1 code exists. CI passes on all three real-Docker lanes, and release `v0.1.0` passed `selftest --host` on the first host; no exit gate has passed yet ([README](../../README.md#status)). Status tags: **Decided** (part of the design), **Planned Mx** (decided, built in milestone x), **Open OD-n** (needs an owner decision), **Unverified** (a platform fact the M0 spike or a later spike must confirm). Owner decisions are cited as OD-n: OD-1 (name), OD-2 (LisaHQ namespace), OD-3 (public repository) and OD-11 (app images built in each app's CI: ADR-0026) are decided; the others are open and recorded in the owner's notes. Operations and their state machines are in [`LIFECYCLE.md`](LIFECYCLE.md); manifest syntax is in [`MANIFEST_SPEC.md`](../app-developers/MANIFEST_SPEC.md); milestones are in [`ROADMAP.md`](ROADMAP.md); the reasons for each choice are in the ADRs ([`adr/README.md`](adr/README.md)).
 
 ## 1. Product
 
@@ -44,7 +44,7 @@ Ingat orchestrates. Each application keeps its data operations inside its own im
 | Caller | How | Allowed (approval classes in [`LIFECYCLE.md`](LIFECYCLE.md) §2) |
 |---|---|---|
 | Owner | SSH, `sudo -i`, the wrapper `<INGAT_ROOT>/bin/ingat` (by default `/srv/ingat/bin/ingat`) | Everything; the only caller meant to answer a class D challenge |
-| Operations agents in the owner's host session | Same binary | Class A and B freely; class C only with an owner-given plan hash; class D never. This is a checkpoint against mistakes that holds only for agents that obey it, **not** a security boundary against root: an agent that allocates a pty (for example `script -qc`) can type a challenge. Real enforcement is the agent's own tool deny rules (owner decision OD-10). Development agents working in the Ingat repository never touch a real host ([`CLAUDE.md`](../CLAUDE.md) §6). |
+| Operations agents in the owner's host session | Same binary | Class A and B freely; class C only with an owner-given plan hash; class D never. This is a checkpoint against mistakes that holds only for agents that obey it, **not** a security boundary against root: an agent that allocates a pty (for example `script -qc`) can type a challenge. Real enforcement is the agent's own tool deny rules (owner decision OD-10). Development agents working in the Ingat repository never touch a real host ([`CLAUDE.md`](../../CLAUDE.md) §6). |
 | Host scheduler (systemd timers, cron, or the platform's scheduler such as DSM Task Scheduler) | Absolute wrapper path, root, no terminal | `ingat scheduled …`: classes A and B only |
 | App CI | `docker run <pinned ingat image> validate` (M1), `conformance` (M3) | Offline validation; real-Docker conformance in its own runner, never against a real host |
 
@@ -223,7 +223,7 @@ Without a matching certification `status` shows `uncertified` attention and gate
 | Host executor `ingat-exec--host` | CLI | one host-scope operation (`selftest`, image prune, self-upgrade) | the host lock |
 | Task containers `<instance>-x<seq>-<step>-a<attempt>` (`role=task`) | executor, `compose run --rm --no-deps -T --name … --label …` (no `-T` for `stdin = "terminal"`, §4.3) | one attempt of one step | no (the executor holds it) |
 
-Instance names cannot contain `--` ([`MANIFEST_SPEC.md`](MANIFEST_SPEC.md) §6.1), so `ingat-exec--host`, `<instance>--r<seq>` and `<instance>--t<seq>` can never collide with an instance.
+Instance names cannot contain `--` ([`MANIFEST_SPEC.md`](../app-developers/MANIFEST_SPEC.md) §6.1), so `ingat-exec--host`, `<instance>--r<seq>` and `<instance>--t<seq>` can never collide with an instance.
 
 ### 4.2 Operations that change Docker run detached (ADR-0005)
 
@@ -448,7 +448,7 @@ Docker: volumes <name>_<store>_g<N> (live generations), <name>_<store>_t<seq> (d
 
 ## 8. Templates
 
-Manifest argv elements, env values and paths use a closed template vocabulary ([`MANIFEST_SPEC.md`](MANIFEST_SPEC.md) §3). An unknown variable is a validation error; there are no expressions; rendered values are checked for NUL and newlines and are never passed to a shell.
+Manifest argv elements, env values and paths use a closed template vocabulary ([`MANIFEST_SPEC.md`](../app-developers/MANIFEST_SPEC.md) §3). An unknown variable is a validation error; there are no expressions; rendered values are checked for NUL and newlines and are never passed to a shell.
 
 ## 9. Security and trust model
 
@@ -506,7 +506,7 @@ The upstream dind lanes are the evidence for support tier 1 (upstream Engine on 
 
 ### 10.2 Fixtures (no app repositories needed)
 
-`fx-web` (stateless static server), `fx-lite` (the tool image in fixture mode, mirroring the SQLite consumer: a small HTTP server with SQLite WAL, files, a fake outbound queue honouring its `JOBS` and `DELIVERY_MODE` keys ([`MANIFEST_SPEC.md`](MANIFEST_SPEC.md) §11) that writes "sent" markers, and app-native migrate/backup/restore commands with a held-queue restore), `fx-pg` (`postgres:16` as the data service plus a shell app mirroring the PostgreSQL consumer's two-container hooks, with an init-server readiness race, and a web service that refuses to start without a default IPv4 route unless a hold sets its trusted proxy address, as the PostgreSQL consumer's web service does).
+`fx-web` (stateless static server), `fx-lite` (the tool image in fixture mode, mirroring the SQLite consumer: a small HTTP server with SQLite WAL, files, a fake outbound queue honouring its `JOBS` and `DELIVERY_MODE` keys ([`MANIFEST_SPEC.md`](../app-developers/MANIFEST_SPEC.md) §11) that writes "sent" markers, and app-native migrate/backup/restore commands with a held-queue restore), `fx-pg` (`postgres:16` as the data service plus a shell app mirroring the PostgreSQL consumer's two-container hooks, with an init-server readiness race, and a web service that refuses to start without a default IPv4 route unless a hold sets its trusted proxy address, as the PostgreSQL consumer's web service does).
 
 ### 10.3 Required suites (behaviour through the CLI only)
 
