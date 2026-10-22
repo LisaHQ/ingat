@@ -217,7 +217,8 @@ class SessionLoss(unittest.TestCase):
             self.assertEqual([e["Actor"]["Attributes"]["exitCode"] for e in evs if e["Action"] == "die"], ["143"])
         evs = self.events_of(who, w)
         kills = [e["Actor"]["Attributes"].get("signal") for e in evs if e["Action"] == "kill"]
-        self.assertEqual(kills, [str(int(s)) for s in sigs], evs)
+        # a set, not an order: the CLI forwards a hangup's SIGHUP and SIGCONT concurrently, so either may log first
+        self.assertEqual(sorted(kills), sorted(str(int(s)) for s in sigs), evs)
         self.assertEqual([e["Actor"]["Attributes"]["exitCode"] for e in evs if e["Action"] == "die"], ["3"], evs)
         # Only this instance's containers: the stream sees the whole daemon, and parallel suites run operations of
         # their own instances with the same sequence numbers.
