@@ -16,8 +16,8 @@ precedence unless the owner explicitly overrides it in the current task.
   identifiers stay unchanged (owner rule).
 - For other outputs, follow the explicitly requested language; otherwise follow the applicable
   skill's output contract.
-- Keep existing matching `.<lang>.md` translations aligned when editing. Use canonical
-  instructions as the source of truth; consult translations when editing or checking them.
+- Keep each `.vi.md` aligned with its English source when editing. Use the canonical English as
+  the source of truth; consult translations when editing or checking them.
 - Be direct, practical, and architecture-aware. Never over-explain obvious details.
 - Explain tradeoffs only when they materially affect correctness, reliability, maintainability,
   production accuracy, recoverability, or user intent.
@@ -58,7 +58,8 @@ Search headings first and read only the sections the decision needs:
 - [`docs/design/LIFECYCLE.md`](docs/design/LIFECYCLE.md) — safety floors F1-F17, approval classes, state machines, operations, data, exit codes.
 - [`docs/app-developers/MANIFEST_SPEC.md`](docs/app-developers/MANIFEST_SPEC.md) — `ingat.toml` and `instance.toml` schemas and the generic examples (consumer manifests live in their own app repositories: OD-3).
 - [`docs/design/ROADMAP.md`](docs/design/ROADMAP.md) — the current milestone, its slices and exit gate. Read only the current and directly relevant milestones.
-- [`docs/design/adr/`](docs/design/adr/README.md) — accepted decisions, one file per ADR (`docs/design/adr/NNNN-<slug>.md`), indexed in `docs/design/adr/README.md`. A change to an accepted decision is a new ADR.
+- [`docs/design/adr/`](docs/design/adr/README.md) — accepted decisions, one record per ADR (`docs/design/adr/NNNN-<slug>.md` plus its `.vi.md`), indexed in `docs/design/adr/README.md`. A change to an accepted decision is a new ADR.
+- [`docs/guide/operator-guide.md`](docs/guide/operator-guide.md) — what an operator types and sees for every command; update it and its `.vi.md` with any change to commands, output or exit codes.
 - [`README.md`](README.md) — current status, features, conventions (status tags, generic consumer aliases), names and the host support summary (`docs/design/ARCHITECTURE.md` §11); install and commands from M1.
 
 This repository is public and holds generic content only (OD-3, decided). Consumer-specific notes and the owner's decision record are kept outside it; never recreate them here.
