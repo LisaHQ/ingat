@@ -34,7 +34,7 @@ Ingat làm việc trên từng máy một, bằng dòng lệnh, thường là qu
 ## Ingat dành cho ai
 
 - **Những người tự chạy ứng dụng của mình** trên NAS, VPS hay máy chủ ở nhà, và muốn những phần khó và rủi ro được làm hộ một cách an toàn.
-- **Nhà phát triển ứng dụng** muốn ứng dụng của mình dễ cài và cập nhật an toàn. Họ thêm một tệp, `ingat.toml`, vào repository của ứng dụng ([cách làm](docs/app-developers/MANIFEST_SPEC.vi.md)).
+- **Nhà phát triển ứng dụng** muốn ứng dụng của mình dễ cài và cập nhật an toàn. Họ thêm một tệp, `ingat.toml`, vào kho mã (repository) của ứng dụng ([cách làm](docs/app-developers/MANIFEST_SPEC.vi.md)).
 - **Trợ lý AI chạy máy chủ thay cho chủ sở hữu.** Ingat được làm như một bộ dây an toàn cho các trợ lý này: chúng được tự do xem tình hình và tạo bản sao lưu, nhưng mọi thay đổi cần chủ sở hữu duyệt, và việc gì có thể làm mất dữ liệu thì chỉ một người gõ tại một terminal thật mới duyệt được. Quy tắc này đúng với những trợ lý tuân theo nó; chính thiết lập công cụ của chúng buộc chúng tuân theo. Cách để chủ sở hữu giao một kế hoạch đã duyệt cho trợ lý sẽ có ở M2.
 
 ## Vì sao dữ liệu của bạn an toàn
@@ -126,7 +126,7 @@ Trên NAS, đưa cho `facts.sh` cùng hai thư mục đó: `sh facts.sh --root /
 
 ### Bước 3: thêm ứng dụng đầu tiên
 
-Ứng dụng của bạn cần có `ingat.toml` trong repository và các image do CI của nó build ([danh sách việc cho nhà phát triển ứng dụng](docs/design/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát)). Sau đó:
+Ứng dụng của bạn cần có `ingat.toml` trong kho mã và các image do CI của nó build ([danh sách việc cho nhà phát triển ứng dụng](docs/design/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát)). Sau đó:
 
 1. **Mô tả bản cài này của ứng dụng** (một *bản cài*, instance) trong một tệp nhỏ ở thư mục nhận tệp (inbox) của Ingat, ví dụ `/srv/ingat/inbox/lite-test.toml` (trên NAS: `/volume1/ingat/inbox/lite-test.toml`): tên, nơi chứa mã nguồn, cổng và địa chỉ, giữ lại bao nhiêu bản sao lưu. [Ví dụ](docs/guide/operator-guide.vi.md#3-thêm-ứng-dụng-của-bạn).
 2. **Đăng ký nó:** `ingat init lite-test --config /srv/ingat/inbox/lite-test.toml --ref v1.2.0`, rồi gõ `lite-test` để xác nhận.
@@ -169,7 +169,7 @@ Chạy bằng root. Các lớp duyệt: A chỉ đọc; B chỉ thêm (bản sao
 | `version` | Phiên bản của công cụ, của lệnh `ingat` và của image |
 | `host init`, `host check` | Gắn thư mục của Ingat với Docker engine này và ghi lại thông tin của nó (lớp C); ghi lại thông tin và rủi ro thành một lần kiểm tra máy |
 | `init <i> --config <file> --ref <ref>` | Đăng ký một bản cài từ tệp `instance.toml` của nó (lớp C) |
-| `validate <repo-dir> [--instance <file>]` | Kiểm tra một repository ứng dụng, và nếu muốn cả một tệp bản cài, mà không thay đổi gì |
+| `validate <repo-dir> [--instance <file>]` | Kiểm tra kho mã của một ứng dụng, và nếu muốn cả một tệp bản cài, mà không thay đổi gì |
 | `prepare <i> <ref>` | Lấy phiên bản đó, tải các image của nó và ghim chúng lại (lớp B) |
 | `deploy <i> <ref>` | Cài lần đầu, cập nhật có thay đổi dữ liệu, cập nhật chỉ đổi thiết lập, hoặc đường đi tiếp sau một lần cập nhật bị dừng (lớp C); nếu cần thì tự chạy bước chuẩn bị trước |
 | `start\|stop\|restart <i> [<service>…]` | Chạy, dừng hoặc khởi động lại bản triển khai đã ghi nhận (lớp C) |
@@ -189,10 +189,10 @@ Chạy bằng root. Các lớp duyệt: A chỉ đọc; B chỉ thêm (bản sao
 
 Tính đến ngày 2026-10-22.
 
-**Đã chạy được hôm nay** (phiên bản 0.1.0, mốc M1), với các ứng dụng build từ một git repository và lưu dữ liệu trong thư mục thường, hoặc không có dữ liệu:
+**Đã chạy được hôm nay** (phiên bản 0.1.0, mốc M1), với các ứng dụng build từ một kho mã git và lưu dữ liệu trong thư mục thường, hoặc không có dữ liệu:
 
 - cài Ingat, kiểm tra máy (`host init`, `host check`, `selftest`) và nâng cấp Ingat an toàn;
-- đăng ký một ứng dụng (`init`), kiểm tra một repository ứng dụng (`validate`), tải và ghim các image của nó (`prepare`);
+- đăng ký một ứng dụng (`init`), kiểm tra kho mã của một ứng dụng (`validate`), tải và ghim các image của nó (`prepare`);
 - cài lần đầu, có các điểm dừng cho bước thiết lập của ứng dụng; cập nhật có thay đổi dữ liệu (sao lưu trước); cập nhật chỉ đổi thiết lập; và đường đi tiếp an toàn khi một lần cập nhật bị dừng giữa chừng;
 - chạy, dừng, khởi động lại và các tác vụ riêng của ứng dụng;
 - sao lưu (bằng tay và hằng đêm), kiểm tra, thử khôi phục, và xóa bản sao lưu cũ theo quy tắc giữ lại của bạn;
@@ -260,7 +260,7 @@ Tóm tắt [`docs/design/ARCHITECTURE.vi.md`](docs/design/ARCHITECTURE.vi.md) §
 - Ingat là một container image được ghim cố định (`linux/amd64` và `linux/arm64`) có sẵn Python, dòng lệnh Docker, Compose và git bên trong, được khởi động bởi một script 20 dòng mà chỉ root chạy được. Máy chủ, VPS và NAS chạy đúng cùng những byte đó; Python và Compose có sẵn trên máy không bao giờ được dùng.
 - Mọi thay đổi chạy trong một container trợ giúp riêng (`ingat-exec-<instance>`), nên một phiên SSH bị ngắt hay một việc chạy theo lịch không bao giờ làm dừng việc cập nhật dữ liệu giữa chừng. Lệnh bạn gõ chỉ lập kế hoạch, hỏi duyệt và theo dõi. Ngoại lệ là các tác vụ trò chuyện với bạn trong terminal, chạy từ chính cửa sổ của bạn, và ba lệnh ngắn chỉ thay đổi bản ghi của chính Ingat (`host init`, `init`, `secret set`).
 - Compose luôn chạy trên chính các tệp Compose của ứng dụng cộng với một tệp do Ingat tạo ra; tệp này ghim từng dịch vụ vào đúng image đã ghi nhận và thêm những nhãn không bao giờ đổi giữa các lần triển khai, nên một lần cập nhật chỉ tạo lại những dịch vụ có thiết lập thay đổi.
-- Mỗi ứng dụng tự giữ hiểu biết về dữ liệu của nó trong image của chính nó. Tệp `ingat.toml` của nó nằm trong repository của ứng dụng, được đọc từ đúng phiên bản đang cài, và khai báo các tác vụ (sao lưu, khôi phục, kiểm tra, cập nhật dữ liệu) cùng ý nghĩa của từng mã thoát.
+- Mỗi ứng dụng tự giữ hiểu biết về dữ liệu của nó trong image của chính nó. Tệp `ingat.toml` của nó nằm trong kho mã của ứng dụng, được đọc từ đúng phiên bản đang cài, và khai báo các tác vụ (sao lưu, khôi phục, kiểm tra, cập nhật dữ liệu) cùng ý nghĩa của từng mã thoát.
 - Một cơ sở dữ liệu chỉ được coi là sẵn sàng sau khi phép kiểm tra sẵn sàng mà ứng dụng khai báo cho nó đã đạt, chứ không chỉ vì container của nó đã khởi động.
 - Mỗi thao tác có một nhật ký các bước: mỗi bước được ghi lại trước khi chạy, và được kiểm tra trước khi thử lại. Mỗi ứng dụng chỉ có tối đa một thao tác đang mở tại một thời điểm.
 
@@ -286,7 +286,7 @@ Mỗi tài liệu, trừ [`CLAUDE.md`](CLAUDE.md), đều có một bản tiến
 | Từ | Ý nghĩa |
 |---|---|
 | **bản cài** (instance) | Một bản sao đã cài đặt của một ứng dụng trên máy bạn, có tên riêng (ví dụ `lite-test`). Tên đó cũng là tên project Docker Compose của nó. |
-| **manifest ứng dụng** (`ingat.toml`) | Một tệp trong repository của ứng dụng, nói cho Ingat biết ứng dụng hoạt động thế nào: các dịch vụ, dữ liệu, tác vụ của nó. Tệp này không chứa giá trị nào của máy bạn. |
+| **manifest ứng dụng** (`ingat.toml`) | Một tệp trong kho mã của ứng dụng, nói cho Ingat biết ứng dụng hoạt động thế nào: các dịch vụ, dữ liệu, tác vụ của nó. Tệp này không chứa giá trị nào của máy bạn. |
 | **tệp bản cài** (`instance.toml`) | Thiết lập của bạn cho một bản cài: nguồn, cổng, địa chỉ, quy tắc giữ lại. Tệp này nằm trên máy bạn. |
 | **bản sao lưu** (bundle) | Một bản sao lưu đã niêm phong của dữ liệu một bản cài, mỗi tệp có một mã kiểm tra, được giữ trong `INGAT_BACKUPS`. |
 | **đã kiểm tra** (verified) | Ingat đã đọc lại mọi tệp của bản sao lưu, thấy chúng không đổi, và các bước kiểm tra riêng của ứng dụng đều đạt, nếu ứng dụng có (nếu không có, chỉ các tệp được kiểm tra). |
@@ -303,7 +303,7 @@ Mỗi tài liệu, trừ [`CLAUDE.md`](CLAUDE.md), đều có một bản tiến
 
 - **Nhãn trạng thái:** **Decided** (Đã quyết định: một phần của thiết kế), **Planned Mx** (Đã lên kế hoạch: đã quyết định, làm trong mốc x), **Open OD-n** (Còn mở: cần một quyết định của chủ sở hữu), **Unverified** (Chưa kiểm chứng: một đặc điểm nền tảng mà thử nghiệm sớm M0 hoặc một thử nghiệm sau phải xác nhận).
 - **Một bộ từ phán định duy nhất** cho điều kiện hoàn thành, CI và báo cáo: `PASS`, `FAIL`, `BLOCKED`.
-- **Quyết định của chủ sở hữu** được trích dẫn là "owner decision OD-n" (quyết định của chủ sở hữu OD-n). OD-1, OD-2, OD-3 và OD-11 đã được quyết định; các quyết định còn lại vẫn mở và được ghi trong ghi chú riêng của chủ sở hữu, không thuộc repository này.
+- **Quyết định của chủ sở hữu** được trích dẫn là "owner decision OD-n" (quyết định của chủ sở hữu OD-n). OD-1, OD-2, OD-3 và OD-11 đã được quyết định; các quyết định còn lại vẫn mở và được ghi trong ghi chú riêng của chủ sở hữu, không thuộc kho mã này.
 - **Ứng dụng mẫu không nêu tên.** Hai ứng dụng thật định hướng thiết kế. Ở đây chúng chỉ được gọi bằng tên chung:
   - *ứng dụng PostgreSQL* (the PostgreSQL consumer): một ứng dụng web nhiều dịch vụ (PostgreSQL, một backend và một dịch vụ web) có một bước cập nhật dữ liệu riêng, cấp quyền vai trò sau khi khôi phục và một lệnh kiểm tra tính nhất quán; được mô phỏng bởi ứng dụng thử `fx-pg`;
   - *ứng dụng SQLite* (the SQLite consumer): một ứng dụng một container có SQLite trong một thư mục dữ liệu gắn từ máy (bind mount), sao lưu ngay khi ứng dụng đang chạy, bằng cơ chế riêng của ứng dụng, một hàng đợi thư gửi đi, và cập nhật dữ liệu khi khởi động; được mô phỏng bởi ứng dụng thử `fx-lite`;
@@ -318,7 +318,7 @@ Mỗi tài liệu, trừ [`CLAUDE.md`](CLAUDE.md), đều có một bản tiến
 |---|---|
 | Sản phẩm | Ingat |
 | CLI | `ingat` |
-| Repository | `github.com/LisaHQ/ingat` |
+| Kho mã (repository) | `github.com/LisaHQ/ingat` |
 | Tiền tố biến môi trường | `INGAT_` (ví dụ `INGAT_ROOT`, `INGAT_BACKUPS`) |
 | Không gian tên nhãn | `io.github.lisahq.ingat.` (ví dụ `io.github.lisahq.ingat.instance`) |
 | Image | `ghcr.io/lisahq/ingat` (công khai, đa kiến trúc `linux/amd64` và `linux/arm64`, tải theo digest) |

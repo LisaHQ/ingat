@@ -48,7 +48,7 @@ On a Synology NAS, give `facts.sh` the same folders: `sh facts.sh --root /volume
 - `host init` prints the Docker version, storage driver and kernel, then, after any `risk:` lines, either `this computer's Docker build is certified, so every command may run (gate tier 2)` or `changes are not allowed on this computer yet (gate tier 2 refuses): …` followed by the reason.
 - `selftest --host` prints one `PASS` line per check and the path of the certificate file it wrote.
 
-**After every update of the operating system, the kernel or Docker**, run `ingat selftest --host` again. Until you do, `ingat status` shows a `needs your attention (uncertified)` line, and the scheduled test restore refuses to run (exit 2). The nightly backups keep running as long as the app can be backed up without stopping (as `fx-lite` can), but they keep every old backup copy until you run `ingat selftest --host` again.
+**After every update of the operating system, the kernel or Docker**, run `ingat selftest --host` again. Until you do, `ingat status lite-test` shows a `needs your attention (uncertified)` line, and the scheduled test restore refuses to run (exit 2). The nightly backups keep running as long as the app can be backed up without stopping (as `fx-lite` can), but they keep every old backup copy until you run `ingat selftest --host` again.
 
 **No internet on the machine?** `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` loads Ingat from the release file instead of downloading it (on an `aarch64` machine, use `ingat-0.1.0-arm64.tar`). Download the file from the same release page on another computer and copy it into the same folder.
 

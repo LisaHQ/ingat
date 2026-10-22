@@ -81,7 +81,7 @@ Mọi biến Compose không có giá trị mặc định của Compose (`${VAR}`
 | `forbidden` | Các khóa do image cố định và không bản cài nào được đặt (chúng sẽ chuyển dữ liệu đi nơi khác hoặc thay đổi danh tính của ứng dụng lúc chạy) |
 | `[app_env.keys] <KEY>` | `required` (bản cài phải đặt; bị từ chối nếu đi cùng `default` hoặc `tool_managed`), `default`, `allowed` (danh sách), `pattern`, `secret` (giá trị được đặt bằng `ingat secret set`, lưu trong `secrets/env/<KEY>`), `owner_gated` (một thay đổi làm kế hoạch thành lớp duyệt D (class D); bị bỏ khỏi các lần chạy cách ly), `tool_managed` (chỉ được đặt bởi chốt chặn và `[rollback] env`) |
 
-Các khóa không được khai báo trong `[app_env]` của bản cài bị từ chối. Giá trị được ghi trong dấu nháy đơn; giá trị chứa `'`, ký tự xuống dòng hoặc NUL bị từ chối.
+Trong `[app_env]` của bản cài, mọi khóa mà manifest không khai báo đều bị từ chối. Giá trị được ghi trong dấu nháy đơn; giá trị chứa `'`, ký tự xuống dòng hoặc NUL bị từ chối.
 
 ### 2.4 `[stores.<name>]` và `[services]`
 

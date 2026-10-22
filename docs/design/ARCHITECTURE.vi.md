@@ -14,7 +14,7 @@
 | [§4 Mô hình thực thi](#4-mô-hình-thực-thi) | Vì sao các thay đổi chạy trong một container trợ giúp riêng, các tác vụ dùng terminal, việc hủy, và dọn phần còn sót lại sau khi bị sập |
 | [§5 Mô-đun và phân lớp](#5-mô-đun-và-phân-lớp) | Mã được chia thành các lớp ra sao, giới hạn kích thước, và các bài kiểm thử giữ đúng sự phân chia đó |
 | [§6 Cách gọi Compose](#6-cách-gọi-compose) | Ingat gọi Docker Compose thế nào: luôn trên các tệp riêng của ứng dụng cộng thêm một tệp do Ingat tạo ra |
-| [§7 Bố cục trên đĩa, bản ghi và khóa](#7-bố-cục-trên-đĩa-bản-ghi-và-khóa) | Ingat giữ tệp nào ở đâu, quy tắc ghi chúng, và các khóa để mỗi lúc chỉ một lệnh làm việc với một ứng dụng |
+| [§7 Bố cục trên đĩa, bản ghi và khóa](#7-bố-cục-trên-đĩa-bản-ghi-và-khóa) | Ingat giữ tệp nào ở đâu, quy tắc ghi chúng, và các khóa để mỗi lúc chỉ một thao tác chạy trên một ứng dụng (lệnh chỉ đọc như `status` không lấy khóa) |
 | [§8 Mẫu](#8-mẫu) | Bộ chỗ trống cố định mà một manifest ứng dụng được phép dùng |
 | [§9 Bảo mật và mô hình tin cậy](#9-bảo-mật-và-mô-hình-tin-cậy) | Ingat tin vào gì, chống lại gì, socket Docker, thông tin bí mật, và các thiết lập ứng dụng mà nó từ chối |
 | [§10 Kiểm thử và chứng nhận](#10-kiểm-thử-và-chứng-nhận) | Các mức kiểm thử, các ứng dụng thử, các bộ kiểm thử bắt buộc, và cách một máy được chứng nhận |
