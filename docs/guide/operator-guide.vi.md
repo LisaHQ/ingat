@@ -4,7 +4,7 @@
 
 Hướng dẫn này dành cho người chạy Ingat trên một máy: bạn cài nó, thêm các ứng dụng của mình, và giữ cho chúng luôn được sao lưu và cập nhật. Hướng dẫn nói bạn cần gõ gì và sẽ thấy gì. Lý do đằng sau từng quy tắc nằm trong [`LIFECYCLE.vi.md`](../design/LIFECYCLE.vi.md) và [`ARCHITECTURE.vi.md`](../design/ARCHITECTURE.vi.md).
 
-Hướng dẫn áp dụng cho phiên bản 0.1.0 (mốc M1), tức các lệnh đã có trong mã hôm nay ([README](../../README.vi.md#dùng-hằng-ngày)). Khôi phục, việc duyệt các lệnh có thể làm mất dữ liệu (lớp D), `secret set` và việc giao một kế hoạch cho trợ lý AI (`plan`/`apply`) sẽ có ở M2 ([`ROADMAP.vi.md`](../design/ROADMAP.vi.md)); hướng dẫn nói rõ ở những chỗ liên quan.
+Hướng dẫn áp dụng cho phiên bản 0.1.0 (mốc M1), tức các lệnh đã có trong mã hôm nay ([mọi lệnh](commands.vi.md)). Khôi phục, việc duyệt các lệnh có thể làm mất dữ liệu (lớp D), `secret set` và việc giao một kế hoạch cho trợ lý AI (`plan`/`apply`) sẽ có ở M2 ([`ROADMAP.vi.md`](../design/ROADMAP.vi.md)); hướng dẫn nói rõ ở những chỗ liên quan.
 
 **Cách đọc các ví dụ.** Chạy mọi lệnh bằng tài khoản quản trị của máy, root. `ingat` là lệnh `ingat` mà trình cài đặt tạo ra: `/srv/ingat/bin/ingat` với các thư mục mặc định, hoặc `/volume1/ingat/bin/ingat` trên NAS Synology. `lite-test` là một bản cài ví dụ (một bản sao đã cài đặt của một ứng dụng, instance) của ứng dụng mẫu `fx-lite`.
 
@@ -21,14 +21,20 @@ Hướng dẫn áp dụng cho phiên bản 0.1.0 (mốc M1), tức các lệnh �
 - **Hai thư mục.**
   - `INGAT_ROOT` giữ các bản ghi của Ingat và dữ liệu đang dùng của những ứng dụng lưu dữ liệu trong thư mục thường. Mặc định `/srv/ingat`. Nó phải thuộc root với quyền `0700`, tức chỉ root mở được, và phải nằm trên ổ đĩa bên trong máy này, không bao giờ trên ổ mạng.
   - `INGAT_BACKUPS` giữ các bản sao lưu đã hoàn tất. Mỗi bản được niêm phong bằng mã kiểm tra, nên mọi thay đổi về sau trên nó đều bị phát hiện. Mặc định `/srv/ingat-backups`. Chỉ root ghi vào đó, và bản sao ở nơi khác của bạn được chép từ thư mục này.
-  - Trên NAS Synology, hãy truyền `--root /volume1/ingat --backups /volume1/ingat-backups` khi cài. Ở đó không bao giờ dùng mặc định `/srv`.
+  - Trên NAS Synology, hãy truyền `--root /volume1/ingat --backups /volume1/ingat-backups` khi cài. Ở đó không bao giờ dùng mặc định `/srv`: nó sẽ nằm trên phân vùng hệ thống nhỏ, mà một lần cập nhật DSM có thể đặt lại về ban đầu.
 - **Ingat chỉ nhìn thấy hai thư mục này.** Nó chạy trong container riêng, và container đó chỉ thấy `INGAT_ROOT` và `INGAT_BACKUPS`, không thấy gì khác trên máy. Vì vậy mọi đường dẫn tệp bạn đưa cho nó (`init --config`, `validate <repo-dir>`, `validate --instance`, các tệp `--input` của tác vụ) phải là đường dẫn đầy đủ nằm trong một trong hai thư mục đó, nếu không Ingat sẽ không tìm thấy tệp. Hãy đặt những tệp như vậy, và mã nguồn ứng dụng đã tải về, vào thư mục nhận tệp (inbox): `INGAT_ROOT/inbox/`.
 - **Ứng dụng của bạn** cần có `ingat.toml` trong kho mã (repository) và các image do CI của nó build ([`MANIFEST_SPEC.vi.md`](../app-developers/MANIFEST_SPEC.vi.md); danh sách việc khi đưa ứng dụng vào trong [`ARCHITECTURE.vi.md`](../design/ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) §11.3). `ingat validate <repo-dir>` kiểm tra một bản mã nguồn đã tải về mà không cần mạng và không thay đổi gì, ví dụ một bản nằm dưới `INGAT_ROOT/inbox/`.
 - **Giữ Docker ở một phiên bản đã kiểm thử.** Các lệnh có thay đổi chỉ chạy trên một dòng phiên bản Docker Engine mà bản phát hành Ingat này đã được kiểm thử cùng (danh sách nằm sẵn trong Ingat, tệp `tested.json`), và chỉ sau lần kiểm tra máy ở mục 2, việc bạn làm lại sau mỗi lần cập nhật máy. Trên một phiên bản Docker khác, `ingat status` báo `not a tested combination of this release`: bạn vẫn xem được mọi thứ và vẫn sao lưu được theo cách không dừng ứng dụng, nhưng mọi lệnh thay đổi ứng dụng hay dữ liệu đều từ chối. Vì vậy đừng để Docker tự cập nhật: trên máy Linux hãy ghim `docker-ce` (`apt-mark hold`), và chỉ lên Docker mới cùng với một bản phát hành Ingat đã được kiểm thử với nó.
 
 ## 2. Cài Ingat và kiểm tra máy
 
-Làm một lần cho mỗi máy. Bằng root, với `install.sh`, `facts.sh` và `SHA256SUMS` của bản phát hành trong cùng một thư mục:
+Làm một lần cho mỗi máy.
+
+**Lấy các tệp phát hành.** Tải `install.sh`, `facts.sh` và `SHA256SUMS` từ [trang phát hành](https://github.com/LisaHQ/ingat/releases) vào cùng một thư mục, ví dụ bằng `curl -fLO https://github.com/LisaHQ/ingat/releases/download/v0.1.0/install.sh` và làm tương tự với `facts.sh` và `SHA256SUMS`. Phiên bản 0.1.0 vẫn là bản nháp, nên việc này chỉ làm được khi nó đã được công bố.
+
+**Trên NAS Synology, trước hết** hãy tạo shared folder `ingat-backups` trong DSM Control Panel: chỉ đọc với quản trị viên, không ai khác được truy cập. Thêm nó vào một tác vụ Hyper Backup có mã hóa, để chép nó ra khỏi NAS mỗi đêm sau giờ sao lưu. Sau đó bật SSH và đăng nhập.
+
+Rồi, bằng root, trong thư mục chứa các tệp phát hành:
 
 ```sh
 sudo -i
@@ -39,6 +45,8 @@ sh facts.sh > facts.json               # ghi lại thông tin về máy (không 
 ingat selftest --host                  # kiểm thử Ingat trên máy này: in một dòng tóm tắt, rồi im lặng tới khi xong (vài phút)
 ingat status                           # "gate tier 2 (everything)" ở những dòng cuối: từ giờ Ingat được phép thay đổi ở máy này
 ```
+
+Thêm `--link /usr/local/bin/ingat` vào dòng cài đặt để gõ `ingat` thay vì `/srv/ingat/bin/ingat`.
 
 Trên NAS Synology, đưa cho `facts.sh` cùng hai thư mục đó: `sh facts.sh --root /volume1/ingat --backups /volume1/ingat-backups > facts.json`.
 
@@ -51,6 +59,17 @@ Trên NAS Synology, đưa cho `facts.sh` cùng hai thư mục đó: `sh facts.sh
 **Sau mỗi lần cập nhật hệ điều hành, kernel hoặc Docker**, hãy chạy lại `ingat selftest --host`. Chừng nào bạn chưa chạy, `ingat status lite-test` hiện một dòng `needs your attention (uncertified)`, và lần thử khôi phục theo lịch từ chối chạy (exit 2). Các bản sao lưu hằng đêm vẫn chạy chừng nào ứng dụng sao lưu được mà không cần dừng (như `fx-lite`), nhưng chúng giữ lại mọi bản sao lưu cũ cho tới khi bạn chạy lại `ingat selftest --host`.
 
 **Máy không có internet?** `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` nạp Ingat từ tệp phát hành thay vì tải về (trên máy `aarch64`, dùng `ingat-0.1.0-arm64.tar`). Hãy tải tệp này từ cùng trang phát hành bằng một máy khác rồi chép nó vào cùng thư mục.
+
+**Mọi tùy chọn cài đặt.**
+
+| Tùy chọn | Ý nghĩa |
+|---|---|
+| `--version X.Y.Z` | Bắt buộc. Phiên bản cần cài. Image được tải về dưới dạng `ghcr.io/lisahq/ingat@sha256:…`, đúng mã digest mà `SHA256SUMS` ghi cho phiên bản đó |
+| `--root DIR`, `--backups DIR` | Đường dẫn đầy đủ tới thư mục riêng của Ingat (`INGAT_ROOT`) và thư mục sao lưu (`INGAT_BACKUPS`); chỉ gồm chữ, số và `/ . _ -` |
+| `--from-tar FILE` | Nạp tệp phát hành này bằng `docker load` thay vì tải về (mã SHA-256 của nó phải có trong `SHA256SUMS`) |
+| `--link PATH` | Tạo thêm một lối tắt tới lệnh `ingat` (việc chạy theo lịch luôn dùng đường dẫn đầy đủ) |
+
+Trình cài đặt tạo `INGAT_ROOT` nếu chưa có, với quyền `root:root 0700` (chỉ root mở được), tạo volume `ingat-probe` (có gắn nhãn của Ingat), tự kiểm tra image mới, rồi ghi lệnh `ingat` vào `<root>/bin/ingat`. Chạy lại với cùng `--root` trên một máy đã có Ingat thì đó là nâng cấp (mục 10). Chi tiết: [`ARCHITECTURE.vi.md`](../design/ARCHITECTURE.vi.md#34-cài-đặt) §3.4-§3.5.
 
 ## 3. Thêm ứng dụng của bạn
 

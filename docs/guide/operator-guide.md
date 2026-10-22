@@ -4,7 +4,7 @@
 
 This guide is for the person who runs Ingat on a machine: you install it, add your apps, and keep them backed up and up to date. It says what to type and what you will see. The reasons behind each rule are in [`LIFECYCLE.md`](../design/LIFECYCLE.md) and [`ARCHITECTURE.md`](../design/ARCHITECTURE.md).
 
-It covers version 0.1.0 (milestone M1), the commands that exist in code today ([README](../../README.md#everyday-use)). Restores, approvals for commands that can lose data (class D), `secret set` and handing a plan to an AI assistant (`plan`/`apply`) arrive in M2 ([`ROADMAP.md`](../design/ROADMAP.md)); this guide says so where it matters.
+It covers version 0.1.0 (milestone M1), the commands that exist in code today ([all commands](commands.md)). Restores, approvals for commands that can lose data (class D), `secret set` and handing a plan to an AI assistant (`plan`/`apply`) arrive in M2 ([`ROADMAP.md`](../design/ROADMAP.md)); this guide says so where it matters.
 
 **How to read the examples.** Run every command as the machine's administrator user, root. `ingat` stands for the `ingat` command that the installer writes: `/srv/ingat/bin/ingat` with the default folders, or `/volume1/ingat/bin/ingat` on a Synology NAS. `lite-test` is an example instance (one installed copy of an app) of the sample app `fx-lite`.
 
@@ -21,14 +21,20 @@ It covers version 0.1.0 (milestone M1), the commands that exist in code today ([
 - **Two folders.**
   - `INGAT_ROOT` holds Ingat's own records and the live data of apps that keep their data in plain folders. Default `/srv/ingat`. It must belong to root with permissions `0700`, so only root can open it, and it must sit on a disk inside this machine, never on a network share.
   - `INGAT_BACKUPS` holds the finished backup copies. Each one is sealed with checksums, so any later change to it is noticed. Default `/srv/ingat-backups`. Only root writes there, and this is the folder your off-site copy is taken from.
-  - On a Synology NAS, pass `--root /volume1/ingat --backups /volume1/ingat-backups` when you install. Never accept the `/srv` defaults there.
+  - On a Synology NAS, pass `--root /volume1/ingat --backups /volume1/ingat-backups` when you install. Never accept the `/srv` defaults there: they would sit on the small system partition, which a DSM update can reset.
 - **Ingat can see only these two folders.** It runs inside its own container, which is shown `INGAT_ROOT` and `INGAT_BACKUPS` and nothing else on the machine. So every file path you give it (`init --config`, `validate <repo-dir>`, `validate --instance`, task `--input` files) must be a full path inside one of them, or Ingat cannot find the file. Put such files, and app checkouts, in the inbox: `INGAT_ROOT/inbox/`.
 - **Your app** needs an `ingat.toml` in its repository and images built by its CI ([`MANIFEST_SPEC.md`](../app-developers/MANIFEST_SPEC.md); the onboarding checklist in [`ARCHITECTURE.md`](../design/ARCHITECTURE.md#113-generality-rule) §11.3). `ingat validate <repo-dir>` checks a checkout offline, without changing anything, for example one under `INGAT_ROOT/inbox/`.
 - **Keep Docker on a tested version.** Commands that change anything run only on a Docker Engine version line that this release of Ingat was tested with (the list ships inside Ingat as `tested.json`), and only after the machine check in section 2, which you repeat after every update of the machine. On any other Docker version, `ingat status` says `not a tested combination of this release`: you can still look at everything and take backups that do not stop the app, but every command that changes the app or its data refuses. So stop Docker from updating by itself: on a Linux machine, pin `docker-ce` (`apt-mark hold`), and move to a newer Docker only together with an Ingat release that was tested with it.
 
 ## 2. Install Ingat and check your machine
 
-Do this once per machine. As root, with the release's `install.sh`, `facts.sh` and `SHA256SUMS` in one folder:
+Do this once per machine.
+
+**Get the release files.** Download `install.sh`, `facts.sh` and `SHA256SUMS` from the [release page](https://github.com/LisaHQ/ingat/releases) into one folder, for example with `curl -fLO https://github.com/LisaHQ/ingat/releases/download/v0.1.0/install.sh` and the same for `facts.sh` and `SHA256SUMS`. Version 0.1.0 is still a draft, so this works once it is published.
+
+**On a Synology NAS, first** create the shared folder `ingat-backups` in DSM Control Panel: read-only for administrators, no access for anyone else. Add it to a Hyper Backup task with encryption, to copy it off the NAS every night after the backups. Then turn on SSH and log in.
+
+Then, as root, in the folder with the release files:
 
 ```sh
 sudo -i
@@ -39,6 +45,8 @@ sh facts.sh > facts.json               # writes down facts about this machine (c
 ingat selftest --host                  # tests Ingat on this machine: one summary line, then nothing until done (minutes)
 ingat status                           # "gate tier 2 (everything)" in the last lines: Ingat may now make changes here
 ```
+
+Add `--link /usr/local/bin/ingat` to the install line to type `ingat` instead of `/srv/ingat/bin/ingat`.
 
 On a Synology NAS, give `facts.sh` the same folders: `sh facts.sh --root /volume1/ingat --backups /volume1/ingat-backups > facts.json`.
 
@@ -51,6 +59,17 @@ On a Synology NAS, give `facts.sh` the same folders: `sh facts.sh --root /volume
 **After every update of the operating system, the kernel or Docker**, run `ingat selftest --host` again. Until you do, `ingat status lite-test` shows a `needs your attention (uncertified)` line, and the scheduled test restore refuses to run (exit 2). The nightly backups keep running as long as the app can be backed up without stopping (as `fx-lite` can), but they keep every old backup copy until you run `ingat selftest --host` again.
 
 **No internet on the machine?** `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` loads Ingat from the release file instead of downloading it (on an `aarch64` machine, use `ingat-0.1.0-arm64.tar`). Download the file from the same release page on another computer and copy it into the same folder.
+
+**All install options.**
+
+| Option | Meaning |
+|---|---|
+| `--version X.Y.Z` | Required. The version to install. The image is pulled as `ghcr.io/lisahq/ingat@sha256:…`, the exact digest that `SHA256SUMS` lists for that version |
+| `--root DIR`, `--backups DIR` | Full paths of Ingat's own folder (`INGAT_ROOT`) and of the backups folder (`INGAT_BACKUPS`); letters, digits and `/ . _ -` only |
+| `--from-tar FILE` | Load this release file with `docker load` instead of pulling (its SHA-256 must be listed in `SHA256SUMS`) |
+| `--link PATH` | Also create a shortcut to the `ingat` command (scheduled jobs always use the full path) |
+
+The installer creates a missing `INGAT_ROOT` as `root:root 0700` (only root may open it) and the labelled volume `ingat-probe`, runs a self-check of the new image, and then writes the `ingat` command to `<root>/bin/ingat`. Run again with the same `--root` on a machine that already has Ingat, it is the upgrade (section 10). Details: [`ARCHITECTURE.md`](../design/ARCHITECTURE.md#34-install) §3.4-§3.5.
 
 ## 3. Add your app
 
