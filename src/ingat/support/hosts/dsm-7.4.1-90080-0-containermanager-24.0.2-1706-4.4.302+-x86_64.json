@@ -1,0 +1,177 @@
+{
+  "kind": "selftest",
+  "result": "PASS",
+  "at": "2026-10-22T03:47:05Z",
+  "tool_version": "0.1.0",
+  "state_schema": 1,
+  "build": {
+    "architecture": "x86_64",
+    "build_time": "2026-07-30T10:11:17.000000000+00:00",
+    "containerd": "v1.7.1",
+    "engine": "24.0.2",
+    "git_commit": "f32e615",
+    "kernel": "4.4.302+",
+    "os_release": {
+      "etc.defaults/VERSION": {
+        "builddate": "2026/07/22",
+        "buildnumber": "90080",
+        "buildphase": "GM",
+        "buildtime": "01:54:19",
+        "major": "7",
+        "majorversion": "7",
+        "micro": "1",
+        "minor": "4",
+        "minorversion": "4",
+        "nano": "0",
+        "os_name": "DSM",
+        "productversion": "7.4.1",
+        "smallfixnumber": "0"
+      }
+    },
+    "runc": "v1.1.7",
+    "storage_driver": "aufs"
+  },
+  "engine_package": "24.0.2-1706 ContainerManager",
+  "platform": {
+    "release_files": {
+      "/etc.defaults/VERSION": {
+        "majorversion": "7",
+        "minorversion": "4",
+        "major": "7",
+        "minor": "4",
+        "micro": "1",
+        "buildphase": "GM",
+        "buildnumber": "90080",
+        "smallfixnumber": "0",
+        "nano": "0",
+        "productversion": "7.4.1",
+        "os_name": "DSM",
+        "builddate": "2026/07/22",
+        "buildtime": "01:54:19"
+      }
+    },
+    "docker_version": {
+      "Platform": {
+        "Name": ""
+      },
+      "Components": [
+        {
+          "Name": "Engine",
+          "Version": "24.0.2",
+          "Details": {
+            "ApiVersion": "1.43",
+            "Arch": "amd64",
+            "BuildTime": "Thu Jul 30 10:11:17 2026",
+            "Experimental": "false",
+            "GitCommit": "f32e615",
+            "GoVersion": "go1.20.4",
+            "KernelVersion": "4.4.302+",
+            "MinAPIVersion": "1.12",
+            "Os": "linux"
+          }
+        },
+        {
+          "Name": "containerd",
+          "Version": "v1.7.1",
+          "Details": {
+            "GitCommit": "fea6458b8abe502f6228eab2e5a6678fcb5c3fb0"
+          }
+        },
+        {
+          "Name": "runc",
+          "Version": "v1.1.7",
+          "Details": {
+            "GitCommit": "0320c58"
+          }
+        },
+        {
+          "Name": "docker-init",
+          "Version": "0.19.0",
+          "Details": {
+            "GitCommit": "ed96d00"
+          }
+        }
+      ],
+      "Version": "24.0.2",
+      "ApiVersion": "1.43",
+      "MinAPIVersion": "1.12",
+      "GitCommit": "f32e615",
+      "GoVersion": "go1.20.4",
+      "Os": "linux",
+      "Arch": "amd64",
+      "KernelVersion": "4.4.302+",
+      "BuildTime": "2026-07-30T10:11:17.000000000+00:00"
+    },
+    "docker_info": {
+      "server_version": "24.0.2",
+      "operating_system": "Synology NAS\n (containerized)",
+      "os_version": "7.4.1\n",
+      "os_type": "linux",
+      "architecture": "x86_64",
+      "kernel": "4.4.302+",
+      "storage_driver": "aufs",
+      "logging_driver": "db",
+      "cgroup_driver": "cgroupfs",
+      "cgroup_version": "1",
+      "cpu_cfs_quota": false,
+      "cpu_cfs_period": false,
+      "cpu_shares": true,
+      "cpuset": true,
+      "memory_limit": true,
+      "swap_limit": true,
+      "pids_limit": false,
+      "oom_kill_disable": true,
+      "live_restore": false,
+      "security_options": [
+        "name=apparmor"
+      ],
+      "default_runtime": "runc",
+      "init_binary": "docker-init"
+    },
+    "capability_warnings": [
+      "WARNING: No kernel memory TCP limit support",
+      "WARNING: No cpu cfs quota support",
+      "WARNING: No cpu cfs period support",
+      "WARNING: No blkio throttle.read_bps_device support",
+      "WARNING: No blkio throttle.write_bps_device support",
+      "WARNING: No blkio throttle.read_iops_device support",
+      "WARNING: No blkio throttle.write_iops_device support"
+    ],
+    "image_store": "classic",
+    "libc": null
+  },
+  "risks": [
+    "the container runtime runc (v1.1.7) is older than 1.1.12 and has a known security hole (CVE-2024-21626); update Docker",
+    "Docker runs containers without the seccomp safety filter, which is weaker than normal; check the Docker setup"
+  ],
+  "checks": [
+    "PASS fx-lite: fixture repository with commits A and B",
+    "PASS fx-web: fixture repository with commits A and B",
+    "PASS ingat-selftest-1-lite: init at A",
+    "PASS ingat-selftest-1-lite: prepare A",
+    "PASS ingat-selftest-1-lite: deploy A, the first install up to its pause",
+    "PASS ingat-selftest-1-lite: resume the install",
+    "PASS ingat-selftest-1-lite: backup",
+    "PASS ingat-selftest-1-lite: verify the bundle",
+    "PASS ingat-selftest-1-lite: drill the bundle",
+    "PASS ingat-selftest-1-lite: prepare B",
+    "PASS ingat-selftest-1-lite: deploy B, a config-only update",
+    "PASS ingat-selftest-1-lite: status needs no attention",
+    "PASS ingat-selftest-1-web: init at A",
+    "PASS ingat-selftest-1-web: prepare A",
+    "PASS ingat-selftest-1-web: deploy A, the first install",
+    "PASS ingat-selftest-1-web: prepare B",
+    "PASS ingat-selftest-1-web: deploy B, a config-only update",
+    "PASS ingat-selftest-1-web: status needs no attention",
+    "PASS ingat-selftest-1-lite: teardown",
+    "PASS ingat-selftest-1-web: teardown",
+    "PASS the run's plans, run files, clones, exports and repositories removed",
+    "PASS nothing of the run remains"
+  ],
+  "manual_checklist": {
+    "scheduled run with failure mail (DSM Task Scheduler)": "pending",
+    "SSH drop during a backup": "pending",
+    "off-host copy of the backups root (Hyper Backup)": "pending",
+    "wrapper and state present after a platform update": "pending"
+  }
+}
