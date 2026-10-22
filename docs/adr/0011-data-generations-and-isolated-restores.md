@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** An app's data lives in numbered data areas (generations). A restore fills a new data area in a separate, sealed-off project and only then switches the app over; the old data stays. Test restores use throwaway projects.
+
 ## Context
 
 Both consumers already restore into a new location (their own runbooks' restore procedures). Starting store services on a new generation inside the live project would recreate the live database under a running backend (Lens A must-fix). The predecessor's same-UUID-only restore made disaster recovery impossible.

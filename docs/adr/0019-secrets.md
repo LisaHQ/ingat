@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** Passwords and keys exist only as files, checked before every use. They are hidden in all output, error messages name only their keys, and they never go into a backup.
+
 ## Context
 
 The predecessor leaked a `.env` hash into stderr and the journal, and a password character into a parser error. Compose replaces a missing secret file with an empty directory.

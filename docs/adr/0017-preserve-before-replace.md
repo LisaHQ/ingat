@@ -2,6 +2,8 @@
 
 **Status:** Accepted, pending owner decision OD-4.
 
+**In plain words:** Any update that changes the program of a part that writes data first stops those parts, takes a backup copy and checks it; only then does the data update run. This costs some minutes of downtime per release, and the owner decides whether that is acceptable (OD-4).
+
 ## Context
 
 The PostgreSQL consumer's release script takes the in-freeze backup only when a migration is pending; the SQLite consumer's runbook takes its paired backup online before stopping, so writes between the two are missing from the pair. Deciding "migration pending" at plan time needs a candidate probe, which creates containers and breaks plan purity.

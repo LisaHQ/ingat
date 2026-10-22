@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** Ingat runs Docker Compose on the app's own, unchanged Compose files plus one file it generates. That file pins exact images and adds labels that never change between deployments, so only services whose settings really changed are recreated.
+
 ## Context
 
 Executing from a re-rendered `compose config` model risks escape drift across Compose versions: the PostgreSQL consumer's healthcheck uses `$$POSTGRES_USER`, and the predecessor needed escape calibration. Shell variables override `--env-file`.

@@ -2,6 +2,8 @@
 
 **Status:** Accepted, pending owner decision OD-5.
 
+**In plain words:** An app can say that its production copy must not share a machine with another copy of the same app. Ingat then refuses by default. The owner may relax the rule later (OD-5).
+
 ## Context
 
 The PostgreSQL consumer's own deployment rules forbid a staging instance on the Docker daemon that runs its production, and its release script refuses while a staging project exists. The `safety` proposal dropped the rule silently (Lens A must-fix). A host running two PostgreSQL instances also needs RAM.

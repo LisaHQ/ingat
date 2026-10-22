@@ -2,6 +2,8 @@
 
 **Status:** Accepted; revised 2026-10-14, before any implementation, for platform-neutral host support ([ADR-0025](0025-host-baseline.md)): the backups root is generic, and the DSM shared folder is its form in the DSM profile. The earlier title was "Filesystem layout: plain POSIX root, root-written backup share".
 
+**In plain words:** Ingat's own folder is a plain folder that only root can open. A backup is first written there, then copied into a separate backups folder that only root can write to; that folder is the one your off-site copy is taken from.
+
 ## Context
 
 Hosts differ in how the backups root can be protected and copied off the host. On DSM, shared folders carry ACLs that override POSIX modes; task containers run as fixed uids (10001 in both consumers' images) and can be denied. On Btrfs volumes a rename from one subvolume to another fails with `EXDEV`, and on any host the two roots may sit on different filesystems (on an ext4 volume within one filesystem a rename would work, but one publishing path serves every layout). Hyper Backup protects shared folders, not the Docker root (`@docker` on the volume where Container Manager is installed); on a Linux host, restic, borg or rsync copy a directory. SQLite WAL needs local storage.

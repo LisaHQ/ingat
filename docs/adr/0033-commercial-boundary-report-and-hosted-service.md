@@ -2,6 +2,8 @@
 
 **Status:** Accepted (owner, 2026-10-19). Supersedes the notification sentence of [ADR-0022](0022-delegated-concerns.md) (now superseded in part): notification may also go to a receiver the owner enrolled, through an outbound report the host scheduler sends. Narrows the non-goals "a notification channel" and "a web UI, daemon, agent" in [ARCHITECTURE.md](../ARCHITECTURE.md) §1.4 to the host side.
 
+**In plain words:** Nothing that keeps or recovers data will ever be paid, limited or tied to a plan: the tool stays free and complete. The paid product is a hosted status page that a machine reports to through one outbound report the owner signs up for. A `support-bundle` command collects facts for help requests. Planned.
+
 ## Context
 
 Ingat is complete and limit-free under Apache-2.0, but nothing tells an owner how their hosts are doing except the scheduler's failure mail, and the owner wants a free tier and a paid tier without weakening the floors F1-F17, the approval classes or the generality rule, and without a listener, a daemon or a third-party dependency in the tool. Three models were judged: a hosted hub holding customers' bundles, an offline licence file with limits in the CLI, and a free tool with paid work plus a hosted status page. The third won on every criterion that touches the floors.

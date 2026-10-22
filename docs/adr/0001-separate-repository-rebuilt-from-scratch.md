@@ -2,6 +2,8 @@
 
 **Status:** Accepted (owner directive, 2026-10-14).
 
+**In plain words:** Ingat is a new, separate project written from scratch. It shares nothing with the older in-house tool it replaces and cannot read that tool's data; the apps it ran are reinstalled fresh.
+
 ## Context
 
 The predecessor, an earlier in-house deployment controller, lived inside the repository of the PostgreSQL consumer (about 29k runtime lines, most of them in one script). It never ran on the target host, its last review gate required changes, and its Compose allowlist rejected the SQLite consumer and could not express the PostgreSQL consumer's production Compose file. The PostgreSQL consumer is not in production.

@@ -1,169 +1,308 @@
 # Ingat
 
-> **ingat**: deploy and update Docker Compose apps on one host from immutable sources. It keeps your data before every risky change, counts a backup as restorable only after an isolated restore of that exact sealed backup, resumes safely after an interruption, and deletes only what it can prove it owns.
+**English** · [Tiếng Việt](README.vi.md)
 
-*Ingat* is Malay/Indonesian for "remember, be aware, be careful". In Tagalog *ingat* means care and caution, and the everyday farewell *Ingat!* means "take care!". Say it close to "in-ngat".
+[![CI](https://github.com/LisaHQ/ingat/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LisaHQ/ingat/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-**Where it runs.** Any machine or appliance with a local Linux Docker Engine (24.0 or later) and Compose v2: a bare-metal server, a VM or VPS, a NAS that offers Docker (Synology or any other vendor), a small board, on `x86_64`, or on `arm64` for the Engine lines its CI lane passes. Mutating commands need an Engine line that CI tests (today 24.0 and one exact 29.x; on arm64 29.x only). Platform differences are detected capabilities and a certification per platform build, never a branch on a platform name, vendor or model ([Hosts](#hosts), below).
+**Ingat installs, updates and backs up the apps you run with Docker Compose on your own server or NAS, and it never gambles with your data.**
 
-## Status
+Before any change that could touch your data, Ingat makes a backup and checks it. It never writes over your data. It proves that a backup really works by restoring it into a separate test copy of the app. And if your connection drops in the middle of an update, nothing is left half done: the work carries on, and you can always continue it or undo it.
 
-| What | State |
+*Ingat* means "remember, be aware, be careful" in Malay and Indonesian. In Tagalog the everyday goodbye *Ingat!* means "take care!". Say it close to "in-ngat".
+
+> [!NOTE]
+> **Early days.** Version 0.1.0 exists as a draft release and is not published yet. It handles simple apps today, passes all of its automatic tests on real Docker, and has passed its self-test on its first real machine, a Synology NAS. No real app runs under it yet, and restores come in the next milestone. Details: [Status](#status).
+
+[What it does](#what-ingat-does) · [Why your data is safe](#why-your-data-is-safe) · [Get started](#get-started) · [Everyday use](#everyday-use) · [Status](#status) · [Where it runs](#where-it-runs) · [Learn more](#learn-more)
+
+## What Ingat does
+
+You keep a few apps running on one machine (a website, a shop, a small tool your team uses) with Docker Compose. Ingat is the careful helper for that machine. With one command each, it:
+
+- **installs** an app from an exact version of its source code;
+- **updates** it to a new version and moves its data forward safely;
+- **backs it up**, every night or whenever you ask, and removes old backup copies by the keep rules you set;
+- **checks** each backup copy, and **test-restores** it into a separate copy of the app to prove that it works;
+- **starts, stops and restarts** the app, and runs the maintenance tasks the app provides;
+- tells you in plain words what needs your attention, and which command to run next.
+
+Planned for later milestones: restores (M2), going back to an older version and removing an app cleanly (M3), moving to a new machine and taking over an app that was installed without Ingat (M4).
+
+Ingat works on one machine at a time, from the command line, usually over SSH. It is not a cluster manager, a hosting panel or a cloud service, and it does not copy your backups to another place: your own backup tool does that (restic, borg, rsync, or Hyper Backup on a Synology NAS).
+
+## Who it is for
+
+- **People who run their own apps** on a NAS, a VPS or a home server, and want the hard and risky parts done for them, safely.
+- **App developers** who want their app to be easy and safe to install and update. They add one file, `ingat.toml`, to the app's repository ([how](docs/MANIFEST_SPEC.md)).
+- **AI assistants that run servers for their owner.** Ingat is built as a safety harness for them: they may look around and take backups freely, but a change needs the owner's approval, and anything that can lose data can only be approved by a person typing at a real terminal. This holds for assistants that follow the rule; their own tool settings enforce it. The way for an owner to hand an approved plan to an assistant comes in M2.
+
+## Why your data is safe
+
+| Promise | What it means for you |
 |---|---|
-| Phase | **M0 and M1 in progress.** The M0 repository skeleton (design docs, ADRs, the image build files, CI and release workflows, `facts.sh`, the spike script) and the M1 code exist. CI runs on GitHub on every push and passes on all three real-Docker lanes; release `v0.1.0` exists as a draft for the first host run, not yet published; on the first host `selftest --host` passed and the first host certification is committed (2026-10-22), with its manual checklist still pending. No exit gate has passed yet ([`docs/ROADMAP.md`](docs/ROADMAP.md)). |
-| Implemented in code (M1) | `install.sh` and the root-only wrapper; `host init`, `host check`, the version gate and `selftest` (`--offline`, `--host`); `init` and `validate`; `prepare` (pulls of CI-built images, pinned by ID and digest, with the label check that binds the commit); `deploy` of git-sourced stateless and bind-store apps: first install with its steps and pauses, data-changing update (freeze, sealed and verified pre-change bundle, migrate, activation), config-only change and the way forward from a frozen update; the detached executor with follower, `attach`, `cancel`, `resume`, `abandon`, auto-abandon and the orphan check; `start`, `stop`, `restart` and declared tasks (terminal tasks in the CLI); `backup`, `verify`, the isolated drill, `prune --bundles` and the `scheduled` jobs; `status`, `doctor`, `list`, `ps`, `logs`, `history`, `bundles`; the Compose policy and raw-text rules. Not yet: `doctor`'s comparison of the observed proxy peer with the configured value (M1 scope); restores, volume stores, data services, image sources, `exec` tasks, file streams, log snapshots, deploy prechecks and postchecks, a task-based `[schema]`, `secret set`, class D and `plan`/`apply` (M2 and later). |
-| Verification | Local scratch Docker daemons only (upstream `docker:24.0.2-dind` and `docker:29.9.0-dind`), during development: static lints, unit tests, real-Docker tests of the adapters, executor, safety floors, planners, diagnostics, selftest and CLI, and the integration suites through the installed wrapper (lifecycle loop, no trace, crash matrix with the full generated matrix, session loss, secret canary and terminal tasks, version gate, upgrade, recreate scope, isolation). This is local evidence, not a CI verdict: `tested.json` in the source tree is empty, and the upgrade suite's previous-release case is `BLOCKED` until a release exists. |
-| Decided | The architecture, the safety floors, the approval classes, the manifest format (a draft until the M2 exit gate freezes it), the milestones and the ADRs in [`docs/adr/`](docs/adr/README.md). Owner decisions OD-1 (the name Ingat), OD-2 (the LisaHQ namespace) and OD-3 (a public repository and image with generic content only), all on 2026-10-14, and OD-11 (app images are built in each app's CI, [ADR-0026](docs/adr/0026-app-images-built-in-app-ci.md)) on 2026-10-15. On 2026-10-19 the owner accepted [ADR-0031](docs/adr/0031-data-providers.md) (data providers and a public catalog, so third-party apps need no backup commands of their own), [ADR-0032](docs/adr/0032-local-session-bound-web-view.md) (a local, read-only, session-bound web view) and [ADR-0033](docs/adr/0033-commercial-boundary-report-and-hosted-service.md) (nothing that preserves or recovers data is ever paid; an outbound status report and a hosted status page as the paid product): [`docs/ROADMAP.md`](docs/ROADMAP.md) §5. |
-| Open | Owner decisions OD-4 to OD-10, recorded in the owner's private notes; the docs tag every dependency on one as **Open OD-n**. The exit-gate items that need the owner's host and CI: the first CI runs (and with them `tested.json` and the arm64 verdict), `facts.sh` and the spike on the first host, the first host certification (`selftest --host`), `lite-test` on the first host with its scheduled jobs, a drill and an update, and the SQLite consumer's manifest and CI image publishing in its own repository. |
-| Host facts | The first real deployment is a Synology NAS on DSM 7.4.1 with Container Manager 24.0.2; a read-only probe of it supplied the facts of the first platform profile on 2026-10-14 ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11.2). Generic Linux hosts are covered by the CI lanes from M1. The runtime behaviours the design depends on are M0 spike items ([`docs/ROADMAP.md`](docs/ROADMAP.md)); none is verified on the first host or in CI yet. |
-| License | [Apache License 2.0](LICENSE). |
+| **A backup before every risky change** | Before an update that touches your data, Ingat stops the parts of the app that change your data, makes a backup copy, seals it with checksums and checks it. Only then does it change anything. If the backup fails, nothing is replaced. |
+| **Nothing is written over** | A restore fills a new, separate data area and only then switches the app over to it. Your previous data stays as it was. (Restores come in M2; the rule is already part of the design.) |
+| **Backups are proven, not hoped for** | A backup copy counts as "test-restored" only after Ingat restored that exact copy into a separate test copy of the app, which cannot reach your live data, and the app's own checks passed. |
+| **Interruptions are safe** | Changes run in a helper on the machine, not in your SSH window, so a dropped connection stops nothing. Ingat writes down each step before it takes it, so an interrupted job can always be continued or undone. Nothing is left stuck. |
+| **It deletes only its own things** | Ingat removes only what it created, can prove it owns, and listed in a plan first. It never runs `docker system prune` or `docker compose down -v`, and it never touches containers, volumes or networks it did not create. |
+| **Passwords stay private** | Passwords and keys live only in files that only root can read. Ingat never puts them on a command line, in its records, in backups, in logs or in error messages. |
+| **No "force" switch** | There is no `--force` and no `--yes`. When Ingat says no, nothing has changed, and the message names the safe command to run instead. |
+| **Only on tested machines** | Commands that change anything run only on Docker versions this release was tested with, and only after Ingat has tested your machine (`ingat selftest --host`). |
 
-Ingat is rebuilt from scratch and replaces an earlier in-house deployment controller. It has **no compatibility** with it: no shared labels, roots, records, bundles, volumes or images, and it reads none of its formats. Taking over a deployment made outside Ingat is a product feature (adoption, below).
+The exact rules are the 17 safety floors in [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md#1-safety-floors). They are written in code, and no setting turns them off.
 
-## Features
+## Get started
 
-The full feature set is committed scope through M4.
+### What you need
 
-| Feature | Milestone |
-|---|---|
-| Host install, version gate and host certification on any Linux Docker host (generic Linux covered by the CI lanes; the first platform profile, Synology DSM 7.4 with Container Manager 24.0.2, certified on the first host) | M1 (the first committed generic Linux certification M4) |
-| Deploy from an exact git commit or an image digest; first install with pauses | M1 (image digests M2) |
-| Update with schema and data migration, only after a sealed, verified pre-change bundle taken with writers stopped | M1 (bind stores), M2 (volume stores and data services), M3 (data-service image changes) |
-| Backup: sealed, hashed bundles, scheduled and manual, with retention | M1 |
-| Verify (hash plus the app's verify tasks) and an isolated restore-test drill | M1 |
-| Restore into a new data generation, never over current data | M2 |
-| Rollback: an older release by deploy plus the paired restore (M1-M2); the `rollback` command, code-only or with data (M3) | M1-M3 |
-| Purge, gated by a restore-tested final bundle | M3 |
-| Monitoring with stable exit codes; `schedule render` for systemd timers, cron and DSM Task Scheduler | M3 |
-| Disaster recovery: import, cross-host restore, restore into a new instance | M4 |
-| Adoption of a Compose deployment Ingat did not create, by importing a payload of the app's own backup command and restoring it into a new instance; Ingat never touches the foreign project | M4 |
-| Generic Linux host certification (VPS or server): runbook and the first committed certification | M4 slice 12, when such a host is available |
-| Tool self-upgrade, self-rollback and state migration commands | M5, on a trigger |
-| Data providers: declare an app's data sets (`postgres`, `mysql`, `mariadb`, `sqlite`, `files`) and the tool's own pinned provider images back them up, check and restore them; a public certified catalog of third-party apps ([ADR-0031](docs/adr/0031-data-providers.md)) | Contract and first images parallel with M2, the strategy after the M2 exit gate ([`docs/ROADMAP.md`](docs/ROADMAP.md) §5) |
-| `ingat ui`: a loopback-only, read-only web view for the session, with plain-words explanations and a command composer ([ADR-0032](docs/adr/0032-local-session-bound-web-view.md)) | After the M2 plan hand-over slice ([`docs/ROADMAP.md`](docs/ROADMAP.md) §5) |
-| `report`: one outbound status summary the owner enrols, and `support-bundle` ([ADR-0033](docs/adr/0033-commercial-boundary-report-and-hosted-service.md)) | With M2 or M3 |
+- A machine with **Linux, Docker Engine 24.0 or later and Docker Compose v2**: a server, a VM or VPS, a small board, or a NAS that runs Docker. Processor: `x86_64`, or `arm64` with Docker 29.
+- **Root access**, usually over SSH (`sudo -i`).
+- A **scheduler** for the nightly jobs (systemd timers, cron, or Task Scheduler on a Synology NAS) that emails you when a job fails.
+- A tool that **copies your backups to another place** (restic, borg, rsync, or Hyper Backup on a Synology NAS).
+- **Memory:** Ingat itself needs little. Plan for your apps, plus one extra copy of an app's data services while a test restore runs. Suggested, not yet measured: at least 4 GB for one app with PostgreSQL, 8 GB or more for several apps with weekly test restores.
 
-**Generality rule.** A new app needs a manifest (`ingat.toml`) in its own repository, never a core change, and a new host platform needs a certification, never a platform branch ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11.3).
+Full list: [minimum host requirements](docs/ARCHITECTURE.md#114-minimum-host-requirements).
 
-### Milestones
+> [!IMPORTANT]
+> **The first release is not public yet.** Version 0.1.0 is a draft on GitHub. Once it is published, download `install.sh`, `facts.sh` and `SHA256SUMS` from its [release page](https://github.com/LisaHQ/ingat/releases) into one folder and follow the steps below.
 
-| Milestone | Goal | Estimate |
-|---|---|---|
-| M0 Decisions and host facts | Host facts certified by `facts.sh`, runtime spike on the first host and in CI, image build location decided (OD-11, decided 2026-10-15) | 1 week |
-| M1 Walking skeleton: first real consumer | `lite-test` (the SQLite consumer) on the first host, the first real deployment on a Synology NAS (a support-tier-2 platform), end to end through the detached executor; the CI support-tier-1 lanes cover generic Linux | 3.5 weeks |
-| M2 PostgreSQL consumer staging and restores | `pg-staging` on the first host (the Synology NAS); restores into a new generation for both consumers; plan hand-over to agents; manifest schema frozen | 2.5 weeks |
-| M3 PostgreSQL consumer production readiness | Rollback, purge, prune, monitoring, scheduling renderers (systemd, cron, DSM), conformance, docs; `pg-prod` created (subject to owner decision OD-5) | 2.5 weeks |
-| M4 Disaster recovery, adoption and generic Linux certification | Import, cross-host restore, restore into a new instance, lineage, adoption by payload import; the generic Linux host certification (VPS or server) once such a host is available | 2.5 weeks |
-| M5 Tool evolution | Self-upgrade, state migration framework, generated reference | 1.5 weeks |
+### Step 1: install Ingat
 
-MVP (M0-M2): about 5.5k runtime lines in 7 slices. Completion (M0-M5): about 8.2k lines, 14 slices, about 13.5 weeks. These totals predate [ADR-0028](docs/adr/0028-m1-replan-runtime-size.md), which re-planned M1 alone to about 6.6k lines; each later milestone is re-estimated when it starts. Durations are estimates, not commitments ([`docs/ROADMAP.md`](docs/ROADMAP.md)).
-
-## The design in ten lines
-
-1. One pinned multi-arch container image (`linux/amd64` and `linux/arm64`; Python 3.13, the docker CLI, Compose v5 and git; no buildx, because app images are built in each app's CI: owner decision OD-11) run by a 20-line root-only POSIX wrapper. A Linux server, a VPS and a NAS appliance run the same bytes; host Python and host Compose never matter. arm64 is claimed only for the Engine lines its CI lane passes (29.x only).
-2. Every operation that changes Docker runs in a **detached executor container** (`ingat-exec-<instance>`), so a dropped SSH session or a scheduled run can never stop a migration half-way. The CLI only plans, asks for approval and follows; it runs only terminal tasks and three short state-only commands itself.
-3. Compose always runs on **the app's own Compose files plus a generated override** that pins every service to a recorded image ID, adds stable ownership labels (never a per-deployment value, so unchanged services are never recreated), sets an explicit logging driver and binds data generations. The resolved `config` output is used only for the policy check and the fingerprint.
-4. Each app keeps its data semantics in its own image. The **app manifest** `ingat.toml` lives in the app repository, is read from the exact commit being deployed, and declares typed tasks (backup, restore, verify, migrate, checks) with exact exit-code maps.
-5. **Preserve before replace**: any change of a writer or data-service image stops writers, takes a sealed and verified pre-change bundle, then migrates. Restores never overwrite: they fill a **new data generation** in an isolated `<instance>--r<seq>` project, then switch a pointer. Adoption imports a payload of the app's own backup command and restores it into a new instance the same way; Ingat never touches a foreign object.
-6. Data stores are ready only after a **stable TCP readiness probe**, never because a container reports healthy (a predecessor tool's real-Docker run showed a database container reporting healthy while its image's temporary init server was still running).
-7. A **closed step log** (intent before effect, observe before retry), deterministic per-attempt task-container names, and one open operation per instance make every interruption resumable or abandonable, with no dead ends; backups have no forward step, so a crashed nightly backup never blocks the next one.
-8. **Approval classes**: read-only and non-destructive work runs unattended; changes need a typed name or an owner-given plan hash; destructive work needs a typed challenge on a real terminal and is never accepted by plan hash. This guards against agent mistakes; operations agents' own tool deny rules enforce it (owner decision OD-10).
-9. **Real Docker is the gate** on every push (upstream dind 24.0.2, the Engine and API floor, and one exact 29.x, plus an arm64 lane), with a generated crash matrix, an upgrade suite and a "refusal leaves no trace" test. Support claims name only tested combinations, and every host also needs a certification of its platform build; a vendor-built engine such as Synology's Container Manager needs a committed certification per build line.
-10. **First real consumer** (`lite-test`, an instance of the SQLite consumer, on the first host) at the end of M1, about 4.5 weeks after the repository starts; `pg-staging` (the PostgreSQL consumer) at the end of M2, about 7 weeks; rollback, purge, disaster recovery and adoption follow in M3-M4 as committed scope.
-
-## Hosts
-
-Ingat runs on one host with a local Linux Docker Engine and Compose v2, on any distribution or appliance. Summary of [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11.1:
-
-| Support tier | Hosts | Ingat support |
-|---|---|---|
-| **Support tier 1** | Linux hosts (bare metal, VM, VPS or a board) running upstream Docker Engine (docker-ce or a distribution package) on an Engine line that CI tests (today 24.0 and one exact 29.x), on `x86_64`, or on `arm64` for the lines its arm64 lane passes (29.x only) | The CI lanes cover it from M1; mutating commands (gate tier 2) need a local `ingat selftest --host` certification of the host's platform build, again after every kernel, OS or Engine update (scheduled drills refuse until then). The first committed generic Linux certification (VPS or server) is Planned for M4 slice 12. |
-| **Support tier 2** | Vendor-built engines on appliances: Synology DSM 7.4 or later with Container Manager 24.0.2 or later (Synology's build of Engine 24.0.2, API 1.43) first, other vendors later | Each platform build line needs a committed certification from the full checklist, and every update a local `ingat selftest --host`, while nightly online backups continue and scheduled drills refuse until then. DSM is the first real deployment: its first certification (DSM 7.4.1 build 90080 with Container Manager 24.0.2-1706 on `x86_64`, [`dsm-7.4.1-90080-0-containermanager-24.0.2-1706-4.4.302+-x86_64.json`](src/ingat/support/hosts/dsm-7.4.1-90080-0-containermanager-24.0.2-1706-4.4.302+-x86_64.json)) is committed; its manual checklist items are pending (an M1 exit-gate item). DSM 7.4 reaches end of maintenance about June 2028, so a move to the next DSM line is a planned re-certification. |
-| **Not supported in v1** | Rootless Docker; Docker Desktop on Windows or macOS for production (development only); Podman; Kubernetes or Swarm; multi-host; Docker Engine older than 24.0 (API below 1.43), which also excludes Synology DSM 7.1 and earlier with the legacy Docker package (Engine 20.10, API 1.41, Compose v1) | No CI lane or certification will be added. |
-
-Platforms differ, and Ingat handles each difference as a detected capability, never by platform name: it refuses a non-zero `cpus` limit at plan time on a host without CPU CFS quota, logs through the `local` driver whatever the daemon default (terminal tasks and the CLI through `none`), records an old runc (CVE-2024-21626) or missing seccomp as a host risk, depends on no particular storage driver or cgroup version, and rests recovery on sealed bundles plus an off-host encrypted copy made with the platform's tools, never on snapshots. The first platform profile, DSM 7.4.1 with Container Manager 24.0.2-1706, shows most of these traits at once (a vendor kernel, 4.4.x on many DSM 7.x platforms; runc 1.1.7; aufs or btrfs storage by volume filesystem; logging driver `db`; cgroup v1; AppArmor without seccomp; no CPU CFS quota; live restore off). Upstream dind cannot reproduce a vendor Engine, so only host certification covers it. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11.2.
-
-### Minimum host requirements
-
-Summary of [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11.4:
-
-- **Software:** a local Linux Docker Engine 24.0 or later (API 1.43 or later) with Compose v2 or later (the `docker compose` plugin), reachable through the local socket as root; on Linux, docker-ce from Docker's repository pinned by version, or a distribution package on a tested Engine line.
-- **Access and scheduling:** SSH (or a console) with an account that can `sudo` to root; a scheduler that runs root jobs and mails failures: systemd timers, cron, or the platform's scheduler such as DSM Task Scheduler.
-- **CPU:** `x86_64` (amd64) or `arm64`, arm64 only for the Engine lines its CI lane passes (29.x only). Ingat's own image targets each architecture's baseline; an app image must exist for the host's architecture and may require a higher level (for example RHEL or UBI 9 based images need x86-64-v2), which the per-image canary checks.
-- **RAM:** Ingat itself needs little (not measured yet; M0 records it); the apps dictate the rest. A drill starts a second copy of an app's data services, so plan for the live instances plus one drill copy. Recommended, unmeasured: at least 4 GB for one PostgreSQL-backed app, 8 GB or more for several stateful apps with weekly drills.
-- **Disk:** room for the retained bundles, one extra data generation during a restore, and the images.
-- **Synology:** DSM 7.4 or later with Container Manager 24.0.2 or later (its `docker compose` plugin present).
-
-Meeting these does not make a host supported: every platform build still needs its host certification, and support claims name only tested combinations.
-
-## Install
-
-No release is published yet; this is how a release installs ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3.4-§3.5). As root (`sudo -i`), with the release's `install.sh` and `SHA256SUMS` in one directory:
+**On a Linux server or VPS**, as root:
 
 ```sh
-sh install.sh --version 0.1.0                      # generic default roots /srv/ingat and /srv/ingat-backups
-sh install.sh --version 0.1.0 --root /volume1/ingat --backups /volume1/ingat-backups   # the DSM profile
+sudo -i
+sh install.sh --version 0.1.0 --link /usr/local/bin/ingat
 ```
+
+Ingat keeps its own files in `/srv/ingat` and the backups in `/srv/ingat-backups`. `--link` lets you type `ingat` instead of `/srv/ingat/bin/ingat`.
+
+**On a Synology NAS** (DSM 7.4 or later with Container Manager 24.0.2 or later):
+
+1. In DSM Control Panel, create the shared folder `ingat-backups`: read-only for administrators, no access for anyone else. Add it to a Hyper Backup task, with encryption, that copies it off the NAS every night after the backups.
+2. Turn on SSH, log in, and run:
+
+   ```sh
+   sudo -i
+   sh install.sh --version 0.1.0 --root /volume1/ingat --backups /volume1/ingat-backups
+   ```
+
+   Always give these two folders on a NAS. The default `/srv` would sit on the small system partition, which a DSM update can reset. Below, `ingat` stands for `/volume1/ingat/bin/ingat`.
+
+No internet on the machine? Add `--from-tar ingat-0.1.0-amd64.tar` (or `-arm64.tar`) to load Ingat from the release file instead of downloading it.
+
+<details>
+<summary>All install options</summary>
 
 | Option | Meaning |
 |---|---|
-| `--version X.Y.Z` | Required. The image is pulled as `ghcr.io/lisahq/ingat@sha256:…`, the digest `SHA256SUMS` lists for that version |
-| `--root DIR`, `--backups DIR` | Absolute paths of `INGAT_ROOT` and `INGAT_BACKUPS`, characters `[A-Za-z0-9/._-]` only |
-| `--from-tar FILE` | `docker load` this release tarball (its SHA-256 must be listed in `SHA256SUMS`) instead of pulling |
-| `--link PATH` | Also create a convenience symlink to the wrapper (scheduled jobs always use the absolute wrapper path) |
+| `--version X.Y.Z` | Required. The version to install. The image is pulled as `ghcr.io/lisahq/ingat@sha256:…`, the exact digest that `SHA256SUMS` lists for that version |
+| `--root DIR`, `--backups DIR` | Full paths of Ingat's own folder (`INGAT_ROOT`) and of the backups folder (`INGAT_BACKUPS`); letters, digits and `/ . _ -` only |
+| `--from-tar FILE` | Load this release file with `docker load` instead of pulling (its SHA-256 must be listed in `SHA256SUMS`) |
+| `--link PATH` | Also create a shortcut to the `ingat` command (scheduled jobs always use the full path) |
 
-It creates a missing root as `root:root 0700` (`INGAT_ROOT` must be exactly that) and the labelled volume `ingat-probe`, runs `selftest --offline` with the new image, and writes the wrapper `<root>/bin/ingat` by an atomic rename. On a host that already has a wrapper it is the upgrade: it refuses while any operation is open (exit 2), runs `selftest --host` with the new image and keeps the current wrapper if that fails (exit 3), else keeps the old one as `bin/ingat.prev`. Then, once per host: `ingat host init` (type the host name to approve), `sh facts.sh [--root DIR] [--backups DIR] > facts.json` (read-only; only its `platform` part ever goes into a committed certification), and `ingat selftest --host`, which certifies the platform build for the mutating commands.
+The installer creates a missing `INGAT_ROOT` as `root:root 0700` (only root may open it) and the labelled volume `ingat-probe`, runs a self-check of the new image, and then writes the `ingat` command to `<root>/bin/ingat`. Run on a machine that already has Ingat, it is the upgrade: it refuses while any operation is unfinished (exit 2), runs `selftest --host` with the new version, keeps the current version if that fails (exit 3), and otherwise keeps the old command as `bin/ingat.prev`. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#34-install) §3.4-§3.5.
 
-## Commands (M1)
+</details>
 
-Run as root through the wrapper (`/srv/ingat/bin/ingat` under the default root). Every command takes `--json` (one JSON object on stdout with `code`, `exit` and `next`); exit codes are in [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) §6, approval classes in §2. A class C command asks for the instance name (for `host init`, the host name) on a terminal and refuses without one (exit 2). The paths `init --config` and `validate` take must be absolute and under one of the roots, the only host paths the CLI container sees.
+### Step 2: let Ingat check your machine
+
+Do this once, and again after every update of the system, the kernel or Docker:
+
+```sh
+ingat host init           # links Ingat to this Docker; type this machine's name to confirm
+sh facts.sh > facts.json  # writes down facts about this machine (it changes nothing); keep the file
+ingat selftest --host     # tests Ingat here with throwaway apps; takes a few minutes
+ingat status              # "gate tier 2 (everything)" means Ingat may now make changes here
+```
+
+On a NAS, give `facts.sh` the same folders: `sh facts.sh --root /volume1/ingat --backups /volume1/ingat-backups > facts.json`.
+
+### Step 3: add your first app
+
+Your app needs an `ingat.toml` in its repository and images built by its CI ([checklist for app developers](docs/ARCHITECTURE.md#113-generality-rule)). Then:
+
+1. **Describe this installed copy of the app** (an *instance*) in a small file in Ingat's inbox, for example `/srv/ingat/inbox/lite-test.toml`: its name, where the source is, its port and addresses, how many backups to keep. [Example](docs/runbooks/operator-guide.md#3-add-your-app).
+2. **Register it:** `ingat init lite-test --config /srv/ingat/inbox/lite-test.toml --ref v1.2.0`, then type `lite-test` to confirm.
+3. **Install it:** `ingat deploy lite-test v1.2.0`. Ingat shows its plan step by step; type `lite-test` to approve.
+4. **Look at it:** `ingat status lite-test`.
+5. **Schedule** the nightly backup and the weekly test restore ([how](docs/runbooks/operator-guide.md#7-nightly-and-weekly-jobs)).
+
+Ingat runs inside a container that can see only its own two folders. Put every file you hand to it (instance files, app checkouts, task inputs) in the inbox, `INGAT_ROOT/inbox/`.
+
+The [operator guide](docs/runbooks/operator-guide.md) walks through all of this in more detail.
+
+## Everyday use
+
+`lite-test` is an example instance name.
+
+| I want to… | Command |
+|---|---|
+| See how everything is doing | `ingat status` (or `ingat status lite-test` for one app) |
+| Make a backup now | `ingat backup lite-test --reason "before the mail change"` |
+| Check the newest backup | `ingat verify lite-test --latest` |
+| Prove that it can be restored | `ingat verify lite-test --latest --restore-test` |
+| Update to a new version | `ingat deploy lite-test v1.3.0` |
+| Stop, start or restart the app | `ingat stop lite-test`, `ingat start lite-test`, `ingat restart lite-test` |
+| Read the app's logs | `ingat logs lite-test app --since 1h` |
+| Run a task the app provides | `ingat task lite-test <task>` |
+| Remove old backups by my keep rules | `ingat prune lite-test --bundles`, then the same with `--apply` |
+| Continue or undo an interrupted job | `ingat resume lite-test` or `ingat abandon lite-test` |
+| Watch a running job again | `ingat attach lite-test` |
+| Upgrade Ingat itself | `sh install.sh --version <new version>` |
+
+Every command ends with a `next:` line that names the command to run next. Reading, backups and checks never ask for approval. A change asks you to type the app's name; a scheduled job can never approve a change, so it refuses instead. Add `--json` to any command for one block of machine-readable output.
+
+<details>
+<summary>All commands in version 0.1.0 (milestone M1)</summary>
+
+Run as root. Approval classes: A reads only, B only adds things (backups, checks) or removes what your keep rules allow, C changes something and asks you to type the instance name (for `host init`, the machine's name) on a terminal ([`docs/LIFECYCLE.md`](docs/LIFECYCLE.md#2-approval-classes-and-commands) §2). Exit codes are in [§6](docs/LIFECYCLE.md#6-exit-codes-every-command). The paths that `init --config` and `validate` take must be full paths inside one of Ingat's two folders.
 
 | Command | What it does |
 |---|---|
-| `version` | Tool, wrapper and image versions |
-| `host init`, `host check` | Bind the root to this Docker engine and record its facts (class C); record the facts and risks as a host-check certification |
+| `version` | Versions of the tool, the `ingat` command and the image |
+| `host init`, `host check` | Link Ingat's folder to this Docker engine and record its facts (class C); record the facts and risks as a host check |
 | `init <i> --config <file> --ref <ref>` | Register an instance from its `instance.toml` (class C) |
-| `validate <repo-dir> [--instance <file>]` | Offline checks of an app repository and, optionally, an instance file |
-| `prepare <i> <ref>` | Fetch, resolve the ref, pull and pin the candidate's images (class B) |
-| `deploy <i> <ref>` | First install, data-changing update, config-only change or the way forward from frozen (class C); prepares first when needed |
-| `start\|stop\|restart <i> [<service>…]` | On the recorded deployment (class C) |
-| `task <i> <task> [--arg NAME=VALUE]… [--input NAME=FILE]…` | A declared task (class B for `read`, else C); `--input` names a file in `INGAT_ROOT/inbox/` |
-| `backup <i> [--class <class>] [--reason TEXT] [--prune]` | A sealed, verified bundle (class B; `--class` defaults to `manual`) |
-| `verify <i> <bundle>\|--latest [--restore-test]` | Re-hash and verify a bundle; `--restore-test` is the isolated drill (class B) |
-| `prune <i> --bundles [--apply]` | Retention: a dry run, or the deletions with `--apply` (class B) |
-| `resume <i>`, `abandon <i>` | Continue or close the open operation (class C) |
-| `attach <i>`, `cancel <i>` | Follow the open operation again; ask it to stop at its next safe point |
-| `status [<i>]`, `doctor <i>`, `list`, `ps <i>`, `logs <i> <service> [--since T]`, `history <i>`, `bundles <i>` | Diagnostics; they write nothing (`status` exits 5 when attention is needed) |
-| `scheduled backup <i>`, `scheduled verify <i> <bundle>\|--latest [--restore-test]`, `scheduled task <i> <task> …`, `scheduled status` | Unattended jobs for the host scheduler: class A and B only, one line on success (`scheduled status` prints only the attention codes that changed) |
-| `selftest [--host\|--offline]` | Throwaway instances end to end; `--host` also certifies the platform build; `--offline` checks the image's fixtures without a daemon |
+| `validate <repo-dir> [--instance <file>]` | Check an app repository, and optionally an instance file, without changing anything |
+| `prepare <i> <ref>` | Fetch that version, download its images and pin them (class B) |
+| `deploy <i> <ref>` | First install, update that changes data, update that changes only settings, or the way forward after a stopped update (class C); prepares first when needed |
+| `start\|stop\|restart <i> [<service>…]` | Start, stop or restart the recorded deployment (class C) |
+| `task <i> <task> [--arg NAME=VALUE]… [--input NAME=FILE]…` | Run a task the app declares (class B when it only reads, else C); `--input` names a file in `INGAT_ROOT/inbox/` |
+| `backup <i> [--class <class>] [--reason TEXT] [--prune]` | Make a sealed, checked backup copy (class B; `--class` defaults to `manual`) |
+| `verify <i> <bundle>\|--latest [--restore-test]` | Check a backup copy again; `--restore-test` also test-restores it (class B) |
+| `prune <i> --bundles [--apply]` | Remove old backup copies by the keep rules: a dry run, or the removal with `--apply` (class B) |
+| `resume <i>`, `abandon <i>` | Continue the unfinished operation, or undo what can be undone and close it (class C) |
+| `attach <i>`, `cancel <i>` | Follow the running operation again; ask it to stop at its next safe point |
+| `status [<i>]`, `doctor <i>`, `list`, `ps <i>`, `logs <i> <service> [--since T]`, `history <i>`, `bundles <i>` | Look without changing anything (`status` ends with exit 5 when something needs your attention) |
+| `scheduled backup <i>`, `scheduled verify <i> <bundle>\|--latest [--restore-test]`, `scheduled task <i> <task> …`, `scheduled status` | Jobs for the machine's scheduler: classes A and B only, one line when they succeed (`scheduled status` prints only what changed) |
+| `selftest [--host\|--offline]` | Run throwaway apps from start to end; `--host` also certifies this machine's system and Docker build; `--offline` checks the image without Docker |
 
-## Documentation
+</details>
 
-| File | What it holds |
+## Status
+
+As of 2026-10-22.
+
+**Works today** (version 0.1.0, milestone M1), for apps built from a git repository that keep their data in plain folders, or keep no data:
+
+- installing Ingat, checking the machine (`host init`, `host check`, `selftest`) and upgrading Ingat safely;
+- registering an app (`init`), checking an app repository (`validate`), downloading and pinning its images (`prepare`);
+- the first install, with pauses for the app's setup steps; updates that change data (backup first); updates that change only settings; and the safe way forward when an update stopped half-way;
+- start, stop, restart and the app's own tasks;
+- backups (by hand and nightly), checks, test restores, and removal of old backups by your keep rules;
+- `status`, `doctor`, `list`, `ps`, `logs`, `history`, `bundles`;
+- operations that keep going when SSH drops, with `attach`, `cancel`, `resume` and `abandon`.
+
+**Tested:**
+
+- The automatic tests run on real Docker for every change and every night, and they pass on all three lanes: Docker Engine 24.0 and 29.9 on `x86_64`, and 29.9 on `arm64` ([CI runs](https://github.com/LisaHQ/ingat/actions/workflows/ci.yml)).
+- The first real machine, a Synology NAS on DSM 7.4.1 with Container Manager 24.0.2-1706 (`x86_64`), passed `ingat selftest --host` with version 0.1.0 (22 checks). Its [certification](src/ingat/support/hosts/dsm-7.4.1-90080-0-containermanager-24.0.2-1706-4.4.302+-x86_64.json) is committed; the manual items of its checklist are still open.
+
+**Not done yet:**
+
+- Release v0.1.0 is a draft, not published. Its image `ghcr.io/lisahq/ingat:0.1.0` is public.
+- No real app runs under Ingat yet. The first one, `lite-test` (the SQLite consumer) on that NAS, completes milestone M1; the M1 exit gate has not passed. M2 comes next.
+- Not in this version: restores; apps with Docker volumes or a separate database service; apps deployed from an image only; `exec` tasks; `secret set`; the plan hand-over for AI assistants; commands that can lose data (class D); and `doctor`'s comparison of the proxy address it sees with the configured one.
+
+**Decided, not built yet:**
+
+- **Data providers** ([ADR-0031](docs/adr/0031-data-providers.md)): an app lists its data sets (PostgreSQL, MySQL, MariaDB, SQLite, plain files), and Ingat's own pinned helper images back them up, check them and restore them, so an app needs no backup commands of its own. A public catalog of certified apps.
+- **`ingat ui`** ([ADR-0032](docs/adr/0032-local-session-bound-web-view.md)): a read-only web page for your session, open only on the machine itself, with plain explanations and a helper that writes the command for you. Its first version has no access to Docker.
+- **`ingat report` and `ingat support-bundle`** ([ADR-0033](docs/adr/0033-commercial-boundary-report-and-hosted-service.md)): one outbound status summary that you sign up for, and a package of facts to share when you ask for help.
+
+**Free, and it stays free.** Ingat is open source under the Apache License 2.0. Nothing that keeps or recovers your data will ever be paid, limited or tied to a plan. A hosted status page may become a paid service later ([ADR-0033](docs/adr/0033-commercial-boundary-report-and-hosted-service.md)).
+
+### Roadmap at a glance
+
+| Milestone | What it brings | State |
+|---|---|---|
+| M0 Decisions and machine facts | Name and namespace, facts about the first machine, runtime checks, where app images are built | In progress |
+| M1 First real app | `lite-test` (the SQLite consumer) on the first machine, a Synology NAS; CI covers plain Linux | In progress: code done, exit gate open |
+| M2 Restores and the PostgreSQL consumer | Restores into a new data area for both apps; `pg-staging` on the first machine; plan hand-over to AI assistants; the `ingat.toml` format frozen | Next |
+| M3 Ready for production | Going back to an older version, removing an app, cleaning up, monitoring, helpers for systemd, cron and DSM schedules; `pg-prod` | Planned |
+| M4 Disaster recovery and taking over apps | Restore on another machine, import, taking over an app installed without Ingat; certification of a plain Linux server | Planned |
+| M5 Ingat upgrades itself | Self-upgrade and record migration commands | When needed |
+
+Details, sizes and exit gates: [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Where it runs
+
+Ingat handles the differences between machines by checking what each machine can do, never by its brand, vendor or model.
+
+| | Machines | What they need |
+|---|---|---|
+| **Supported** | Linux on any distribution (server, VM, VPS or small board) with upstream Docker Engine on a line the CI tests: today 24.0 and 29.9 on `x86_64`, 29.9 on `arm64` | `ingat selftest --host` on the machine, again after every kernel, system or Docker update |
+| **Supported, per certified build** | Appliances with their vendor's own Docker build. First: Synology DSM 7.4 or later with Container Manager 24.0.2 or later. Certified so far: DSM 7.4.1 build 90080 with Container Manager 24.0.2-1706 on `x86_64` | A committed certification for each build line, plus `ingat selftest --host` after every update |
+| **Not supported** | Rootless Docker; Docker Desktop on Windows or macOS for real use (development only); Podman; Kubernetes or Swarm; several machines; Docker Engine older than 24.0, which rules out Synology DSM 7.1 and older with the old Docker package | No plans to add them in v1 |
+
+Until a machine's system and Docker build is certified, Ingat still shows you everything and keeps making the backups that do not stop the app, but it refuses every change. More: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#11-hosts-and-support-matrix) §11.
+
+<details>
+<summary>Support tiers and platform traits, in the words of the spec</summary>
+
+Summary of [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11.1-§11.2:
+
+- **Support tier 1:** Linux hosts running upstream Docker Engine (docker-ce or a distribution package) on an Engine line CI tests, on `x86_64`, or on `arm64` for the lines its arm64 lane passes (29.x only). The CI lanes cover it from M1; mutating commands (gate tier 2) need a local `ingat selftest --host` certification of the host's platform build. The first committed generic Linux certification is Planned for M4 slice 12.
+- **Support tier 2:** vendor-built engines on appliances, Synology DSM 7.4 or later with Container Manager 24.0.2 or later (Synology's build of Engine 24.0.2, API 1.43) first. Each platform build line needs a committed certification from the full checklist, and every update a local `ingat selftest --host`, while nightly online backups continue and scheduled drills refuse until then. DSM 7.4 reaches end of maintenance about June 2028, so a move to the next DSM line is a planned re-certification.
+- **Traits:** Ingat refuses a non-zero `cpus` limit at plan time on a host without CPU CFS quota, logs through the `local` driver whatever the daemon default (terminal tasks and the CLI through `none`), records an old runc (CVE-2024-21626) or missing seccomp as a host risk, depends on no particular storage driver or cgroup version, and rests recovery on sealed bundles plus an off-host encrypted copy made with the platform's tools, never on snapshots. Upstream dind cannot reproduce a vendor Engine, so only host certification covers one.
+
+</details>
+
+## How it works, in short
+
+- Ingat is one pinned container image (`linux/amd64` and `linux/arm64`) with Python, the Docker command line, Compose and git inside, started by a 20-line root-only script. A server, a VPS and a NAS run exactly the same bytes; the Python and Compose of the machine itself are never used.
+- Every change runs in a separate helper container (`ingat-exec-<instance>`), so a dropped SSH session or a scheduled job can never stop a data update half-way. The command you typed only plans, asks for approval and follows along.
+- Compose always runs on the app's own Compose files plus a file Ingat generates, which pins every service to the exact recorded image and adds labels that never change between deployments, so an update recreates only the services whose settings changed.
+- Each app keeps the knowledge of its own data in its own images. Its `ingat.toml` lives in the app's repository, is read from the exact version being installed, and declares its tasks (backup, restore, check, data update) and what each exit code means.
+- A database counts as ready only after a stable network check passes, never just because its container says "healthy".
+- Every operation keeps a step log: each step is written down before it runs, and checked before it is retried. Only one operation per app may be open at a time.
+
+The full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md).
+
+## Learn more
+
+| If you are… | Read |
 |---|---|
-| [`README.md`](README.md) | This file: status, features, design summary, hosts, install, commands, conventions and names |
-| [`CLAUDE.md`](CLAUDE.md) | Instructions for AI development agents and contributors |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Product scope, runtime and distribution, execution model, modules, on-disk layout, security model, testing strategy, hosts, support matrix and minimum host requirements |
-| [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) | Safety floors, approval classes, the operation and instance state machines, every operation step by step (adoption included), data strategies, exit codes, scheduled jobs |
-| [`docs/MANIFEST_SPEC.md`](docs/MANIFEST_SPEC.md) | The app manifest (`ingat.toml`) and instance config (`instance.toml`) schemas, with complete generic examples |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Milestones M0-M5 with exit gates, sizes and triggers |
-| [`docs/runbooks/operator-guide.md`](docs/runbooks/operator-guide.md) | Operator guide for the M1 command set: install, certify, register, deploy, day-to-day commands, scheduled jobs, recovery, upgrade; Vietnamese translation in [`operator-guide.vi.md`](docs/runbooks/operator-guide.vi.md) |
-| [`docs/adr/README.md`](docs/adr/README.md) | Index of the numbered architecture decision records (`docs/adr/NNNN-*.md`) |
+| Running Ingat on your machine | [Operator guide](docs/runbooks/operator-guide.md): install, check the machine, add an app, everyday tasks, scheduled jobs, what to do when something goes wrong |
+| Making your app work with Ingat | [`docs/MANIFEST_SPEC.md`](docs/MANIFEST_SPEC.md): the `ingat.toml` and `instance.toml` files, with complete examples; the [onboarding checklist](docs/ARCHITECTURE.md#113-generality-rule) |
+| Curious how Ingat works inside | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (design, security, testing, supported machines) and [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) (safety floors, approvals, every operation step by step, exit codes) |
+| Following the plan | [`docs/ROADMAP.md`](docs/ROADMAP.md): milestones, exit gates and what waits for a trigger |
+| Asking why a choice was made | [`docs/adr/`](docs/adr/README.md): one decision record per choice |
+| Contributing, or an AI development agent | [`CLAUDE.md`](CLAUDE.md) first: the rules for every change |
 
-[Install](#install) and [Commands (M1)](#commands-m1) above summarise the M1 install and command set; [`docs/runbooks/operator-guide.md`](docs/runbooks/operator-guide.md) walks an operator through them, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3.4 and [`docs/LIFECYCLE.md`](docs/LIFECYCLE.md) §2-§4 hold the details, and a generated command reference arrives in M3. Docs stay English; each operator runbook has a Vietnamese translation beside it as `<name>.vi.md` (the M1 guide now; M3 completes them).
+Every document has a Vietnamese version beside it, named `<name>.vi.md`. The English version is the reference.
+
+## Words used in Ingat
+
+| Word | Meaning |
+|---|---|
+| **instance** | One installed copy of an app on your machine, with its own name (for example `lite-test`). The name is also its Docker Compose project name. |
+| **app manifest** (`ingat.toml`) | A file in the app's repository that tells Ingat how the app works: its services, its data, its tasks. It holds no values of your machine. |
+| **instance file** (`instance.toml`) | Your settings for one instance: source, ports, addresses, keep rules. It stays on your machine. |
+| **backup copy** (bundle) | A sealed backup of one instance's data, with a checksum for every file, kept in `INGAT_BACKUPS`. |
+| **checked** (verified) | Ingat re-read every file of the backup copy, found it unchanged, and the app's own checks passed. |
+| **test restore** (drill), **test-restored** (restore-tested) | Ingat restored the backup copy into a separate test copy of the app that cannot reach your live data, checked it, then removed the test copy. |
+| **writers** | The parts of the app that change your data. |
+| **data area** (data generation) | One complete set of an app's data. A restore fills a new one; the old one is kept. |
+| **operation** | One run of a command that changes things, written down step by step so it can be continued or undone. |
+| **forward point** | The step of an update after which Ingat can no longer simply undo it (usually the app's data update). |
+| **on hold** (frozen) | An update stopped after it had started changing data, so the writers are kept stopped on purpose until you take the way forward. |
+| **approval classes** | A: reads only. B: only adds things (backups, checks) or removes what your keep rules allow; runs unattended. C: changes something; you type the instance name. D: can lose data; you type a phrase plus a random code on a real terminal (from M2). |
+| **host certification** | The record that `ingat selftest --host` passed on this exact build of your system and Docker. |
 
 ## Conventions used in every document
 
-- **Status tags**: **Decided** (part of the design), **Planned Mx** (decided, built in milestone x), **Open OD-n** (needs an owner decision), **Unverified** (a platform fact the M0 spike or a later spike must confirm).
+- **Status tags:** **Decided** (part of the design), **Planned Mx** (decided, built in milestone x), **Open OD-n** (needs an owner decision), **Unverified** (a platform fact that the M0 spike or a later spike must confirm).
 - **One verdict vocabulary** for gates, CI and reports: `PASS`, `FAIL`, `BLOCKED`.
 - **Owner decisions** are cited as "owner decision OD-n". OD-1, OD-2, OD-3 and OD-11 are decided; the others are open and recorded in the owner's private notes, which are not part of this repository.
-- **Generic consumers.** The design is driven by two real apps, named here only by generic aliases:
+- **Generic consumers.** Two real apps drive the design. They are named here only by generic aliases:
   - *the PostgreSQL consumer*: a multi-service web app (PostgreSQL, a backend and a web service) with an explicit migrate step, role grants after a restore and an invariant-check command; mirrored by the fixture `fx-pg`;
   - *the SQLite consumer*: a single-container app with SQLite in a bind-mounted data directory, an online app-native backup, an outbound mail queue and a migrate at start; mirrored by the fixture `fx-lite`;
   - `fx-web`: a stateless fixture.
 
   Example instance names: `pg-staging`, `pg-prod`, `lite-test`, `site`.
-- **The predecessor** is "an earlier in-house deployment controller". Lessons from it appear as short generic reasons, never as citations.
+- **The predecessor** is "an earlier in-house deployment controller". Ingat is rebuilt from scratch and has **no compatibility** with it: no shared labels, roots, records, bundles, volumes or images, and it reads none of its formats. Lessons from it appear as short generic reasons, never as citations. Taking over a deployment made outside Ingat is a product feature (adoption, M4).
 
 ## Names
 
@@ -179,11 +318,11 @@ Run as root through the wrapper (`/srv/ingat/bin/ingat` under the default root).
 | DSM profile roots | `/volume1/ingat` (never a shared folder) and `/volume1/ingat-backups` (a DSM shared folder, read-only for administrators, written only by root, the Hyper Backup source); wrapper `/volume1/ingat/bin/ingat`; passed at install, not a code default |
 | Derived Docker names | Compose project `<instance>`, executor `ingat-exec-<instance>`, isolated projects `<instance>--r<seq>` (restore) and `<instance>--t<seq>` (drill), volumes `<instance>_<store>_g<N>` |
 
-In code these names live only in `src/ingat/brand.py` and the wrapper template (ADR-0003); docs use them literally.
+In code these names live only in `src/ingat/brand.py` and the wrapper template ([ADR-0003](docs/adr/0003-name-namespaces-and-brand-module.md)); the docs use them literally.
 
 ## Contributing and AI agents
 
-Read [`CLAUDE.md`](CLAUDE.md) before changing anything. It is the canonical instruction file for AI development agents and applies to human contributors too: the public content rule (generic content only, no consumer or host values), layering, safety floors, testing and the commit-description format. Development agents never run Ingat, `docker` or `install.sh` against a real host; they use CI and scratch dind daemons only.
+Read [`CLAUDE.md`](CLAUDE.md) before changing anything. It is the instruction file for AI development agents and applies to human contributors too: the public content rule (generic content only, no consumer or host values), the layers, the safety floors, testing and the commit-description format. Development agents never run Ingat, `docker` or `install.sh` against a real machine; they use CI and throwaway Docker daemons only.
 
 ## License
 

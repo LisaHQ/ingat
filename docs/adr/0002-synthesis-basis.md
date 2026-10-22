@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** Three draft designs were compared. Ingat takes the smallest one as its base, and adds the strongest safety rules of the second and the way the third runs on a NAS.
+
 ## Context
 
 Three proposals were judged under two lenses. Lens A (safety, correctness, host reality) chose `safety` (43) over `container` (43, tie) and `lean` (41). Lens B (one owner with AI agents, time to first use) chose `lean` (49) over `safety` (44) and `container` (43). Combined: lean 90, safety 87, container 86. Each judge listed must-fix defects for its winner and grafts from the others.

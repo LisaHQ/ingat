@@ -2,6 +2,8 @@
 
 **Status:** Accepted; revised 2026-10-14, before any implementation, for platform-neutral host support ([ADR-0025](0025-host-baseline.md)): the delegated tools are the platform's own, and `schedule render` is M3 only. The Context and Alternatives sections were added the same day. Superseded in part (2026-10-19) by [ADR-0032](0032-local-session-bound-web-view.md) (the no-listener consequence, narrowed to one named exception) and by [ADR-0033](0033-commercial-boundary-report-and-hosted-service.md) (the notification sentence of the Decision); the rest stands.
 
+**In plain words:** HTTPS and routing, off-site copies with encryption, scheduling and failure emails stay with the machine's own tools (a reverse proxy, restic, borg, rsync or Hyper Backup, systemd, cron or Task Scheduler). Ingat gives them stable exit codes and helpers. ADR-0032 (one local web view) and ADR-0033 (one outbound status report) later narrowed two parts.
+
 ## Context
 
 Every host Ingat targets already provides a reverse proxy, backup tools and a scheduler: Caddy or nginx, restic, borg or rsync, and systemd timers or cron on a Linux host; the DSM reverse proxy, Hyper Backup and Task Scheduler on DSM. restic, borg and Hyper Backup encrypt client-side, and rsync can copy to an encrypted destination. Ingat is a short-lived command-line tool with no daemon or listener ([ARCHITECTURE.md](../ARCHITECTURE.md) §1.4).

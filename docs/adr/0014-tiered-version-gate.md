@@ -2,6 +2,8 @@
 
 **Status:** Accepted; revised 2026-10-14, before any implementation, for platform-neutral host support ([ADR-0025](0025-host-baseline.md)): the host certification is required on every host, not only on vendor builds, and is matched on the Engine build that `docker version` reports, not on the Engine package build.
 
+**In plain words:** Which commands may run depends on the machine. Read-only commands run anywhere. Backups that leave the app running also run on an untested Docker. Everything else runs only on a Docker line that CI tested, and only after the machine's exact system and Docker build passed `selftest --host`. There is no override.
+
 ## Context
 
 The predecessor tested Engine 28.5.1 / Compose 2.40.3 while the first platform runs Engine 24.0.2 with an unknown Compose. A platform update (for example a Container Manager update on DSM, or an Engine package update on a Linux host) could silently stop nightly backups if the gate were all-or-nothing (Lens B must-fix). An override for every mutation is unsafe (Lens A must-fix). Hosts range from Linux servers with upstream Engine to appliances with vendor-built engines.

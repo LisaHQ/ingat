@@ -2,6 +2,8 @@
 
 **Status:** Superseded by [ADR-0031](0031-data-providers.md) (2026-10-19): a second strategy, `provider`, joins `tasks`; the reasoning against engine code in `src/` stands.
 
+**In plain words:** The first data rule: apps back up and restore with their own commands, and Ingat does everything around them (stopping, sealing, checking, keeping). ADR-0031 replaced it by adding a second way; its reason for keeping database code out of Ingat's core still holds.
+
 ## Context
 
 Real Docker found engine defects inside the predecessor's PostgreSQL code (its real-Docker runs showed them). Generic engine code cannot carry app semantics such as the SQLite consumer's outbound-mail hold or the PostgreSQL consumer's role grants and invariant check after a restore.

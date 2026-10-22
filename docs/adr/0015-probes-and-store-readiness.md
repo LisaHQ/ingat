@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** Ingat checks that an app is ready in three ways (Docker's health status, a command inside the container, an HTTP request), and each check must stay good for a set time. A database counts as ready only after its own readiness check passes, never because its container says "healthy".
+
 ## Context
 
 A PostgreSQL container reported healthy while the image's temporary init server was running (a predecessor tool's real-Docker run showed it); a Compose `pg_isready` healthcheck uses the socket, and `run --no-deps` skips `depends_on` conditions. The PostgreSQL consumer's code-only rollback path reports its schema as `accepted`. HTTP probes from helper containers break the no-trace rule (Lens A must-fix).

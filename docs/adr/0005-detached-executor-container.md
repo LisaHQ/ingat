@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** Every change to Docker runs in a separate helper container that keeps going on its own; your terminal only follows along. A dropped SSH connection or a closed window can therefore never stop a data update half-way.
+
 ## Context
 
 The predecessor's runner handled only SIGTERM; SIGHUP killed the controller while a mutating child kept running after the lock was released (blocking findings of its last review). Whether `docker run -i -t` through SSH proxies signals and survives a session drop is unverified (Lens A and Lens B both flagged it). Lens B preferred a detached executor only as a fallback; Lens A asked for it by default.

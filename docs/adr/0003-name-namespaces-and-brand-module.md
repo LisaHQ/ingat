@@ -2,6 +2,8 @@
 
 **Status:** Accepted; account, namespace and visibility decided by the owner on 2026-10-14 (owner decisions OD-2, OD-3); the product name Ingat confirmed by the owner on 2026-10-14 (owner decision OD-1); default roots made generic the same day, before any implementation ([ADR-0025](0025-host-baseline.md)).
 
+**In plain words:** The names are fixed once: Ingat, the `ingat` command, the LisaHQ organisation, the label and image names, and the default folders. In code they live in one file only, because Docker labels cannot be renamed later.
+
 ## Context
 
 Docker labels on volumes and networks cannot change after creation; the predecessor wrote identifiers before its naming decision. Docker asks third-party tools to prefix label keys with a reverse-DNS name they control and reserves `com.docker.*`, `io.docker.*` and `org.dockerproject.*` ([Docker object labels](https://docs.docker.com/engine/manage-resources/labels/)). The owner chose the GitHub organization LisaHQ and a public repository.

@@ -2,6 +2,8 @@
 
 **Status:** Accepted (the M0 spike can trigger the fallback); revised 2026-10-14, before any implementation, for platform-neutral host support: the image is multi-arch ([ADR-0025](0025-host-baseline.md)).
 
+**In plain words:** Ingat ships as one container image, for `x86_64` and `arm64`, with a fixed Python, Docker command line, Compose and git inside. A tiny shell script on the machine starts it, so every machine runs exactly the files that were tested, whatever Python or Compose the machine has itself.
+
 ## Context
 
 Ingat runs on any Linux Docker host, and host Python and host Compose differ by platform. DSM's Python is end of life (3.8 system, 3.9 package). Container Manager 24.0.2-1706, the newest build (it needs DSM 7.4), ships Synology's build of Engine 24.0.2 (API 1.43); a later build may change the Engine, which the version gate and re-certification handle ([ADR-0014](0014-tiered-version-gate.md)). Synology does not publish the bundled Compose version. A Linux host with Docker's packages runs Engine 29.x. Hosts may be `amd64` or `arm64`. The predecessor's host-Python trust machinery cost about 4.9k lines and froze upgrades. The owner reviews Python.

@@ -2,6 +2,8 @@
 
 **Status:** Accepted (owner, 2026-10-19). Supersedes [ADR-0010](0010-one-data-strategy-app-native-tasks.md) (one data strategy): a second strategy, `provider`, joins `tasks`. Narrows the deferred `cold` strategy of [ROADMAP.md](../ROADMAP.md) §4 to raw copies of an engine's own data directory. Changes no entry of the never-list in [ARCHITECTURE.md](../ARCHITECTURE.md) §1.4 except its wording for engine code: `src/` still holds none and names no engine; provider images under `providers/` carry the engine code, and `image/providers.lock` is the only place that names a kind.
 
+**In plain words:** Apps without backup commands of their own can list their data sets instead (PostgreSQL, MySQL, MariaDB, SQLite, plain files). Ingat's own pinned helper images then back them up, check and restore them, following a public contract, and a public catalog lists apps certified this way. Database code stays out of Ingat's core. Planned.
+
 ## Context
 
 The onboarding checklist ([ARCHITECTURE.md](../ARCHITECTURE.md) §11.3 item 2) requires an app to ship `backup`, `restore`, `verify` and a schema read in its own image with an exit-code contract. Third-party images (password managers, wikis, feed readers, photo and document stores) ship none, so Ingat cannot manage them, and a one-container manifest costs about 255 lines (`fixtures/fx-lite/ingat.toml`). The owner requires a view for newcomers, coverage of many third-party apps and a free and a paid tier; those need a declarative surface that a form can generate and a certification artifact that ships with the tool. The M1 operator loop was exercised end to end on a scratch daemon during development ([README](../../README.md) Status); nothing has run in CI or on a host yet.

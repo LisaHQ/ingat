@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** Each app describes itself in `ingat.toml` in its own repository, read from the exact version being installed. The format is TOML, and every list of allowed words in it (steps, task modes, checks, placeholders) is fixed: a new word needs an ADR.
+
 ## Context
 
 The predecessor's installed control-plane profile drifted from app releases and could not describe a second app. Both consumers already ship their operations in their images.

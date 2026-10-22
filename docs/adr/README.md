@@ -1,5 +1,7 @@
 # Architecture decision records
 
+> **In plain words.** An ADR (architecture decision record) explains one choice: the problem, what was decided, what else was considered, and what follows from it. Accepted ADRs are records: their decisions are never reworded, and a change is a new ADR. Each ADR starts with a short plain-words summary under its status line; the record itself stays the reference.
+
 Each file records one decision: its context, the decision, the alternatives considered and the consequences. The design documents ([ARCHITECTURE.md](../ARCHITECTURE.md), [LIFECYCLE.md](../LIFECYCLE.md), [MANIFEST_SPEC.md](../MANIFEST_SPEC.md), [ROADMAP.md](../ROADMAP.md)) cite these records by number.
 
 Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (the design default until the owner settles owner decision OD-n, whose options are recorded in the owner's private notes), **Superseded by ADR-NNNN** (ADR-0010, by ADR-0031), **Superseded in part by ADR-NNNN** (one sentence of the decision replaced by the named ADR; the rest stands: ADR-0022, by ADR-0032 and ADR-0033). **Accepted (revised 2026-10-14)** marks the ADRs that the owner's clarification of host scope (any host that runs Docker and Compose, not one appliance line) revised in place on the day they were accepted, before any implementation; each one's status line says what changed. From then on, rule 3 below applies without exception.
@@ -45,7 +47,7 @@ Status values: **Accepted** (part of the design), **Accepted, pending OD-n** (th
 ## Adding an ADR
 
 1. Write one when a decision is needed: a new dependency, a new step type, task mode, probe kind or template variable (with the consumer need it serves), a spike fallback, a re-plan after a milestone passes 1.5 × its line estimate, or a generality failure ([ARCHITECTURE.md](../ARCHITECTURE.md) §11.3).
-2. Take the next free number and name the file `NNNN-short-kebab-title.md`. Start with `# ADR-NNNN <Title>`, a `**Status:**` line, then the sections `Context`, `Decision`, `Alternatives` and `Consequences`.
+2. Take the next free number and name the file `NNNN-short-kebab-title.md`. Start with `# ADR-NNNN <Title>`, a `**Status:**` line, a one-paragraph `**In plain words:**` summary, then the sections `Context`, `Decision`, `Alternatives` and `Consequences`.
 3. Never rewrite an accepted ADR's decision. A change is a new ADR that names the one it supersedes; the old one's status becomes `Superseded by ADR-NNNN`.
 4. Add a row to the index above in the same change, and update the design documents that cite the decision.
 5. Follow the public content rule ([CLAUDE.md](../../CLAUDE.md), Architecture Rules): generic content only, no consumer names, host values or private references; describe a consumer by its role (the PostgreSQL consumer, the SQLite consumer) or by its fixture (`fx-pg`, `fx-lite`, `fx-web`).

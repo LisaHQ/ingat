@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** A backup copy (bundle) is a folder with a checksum file that lists every file; its identity is the hash of that checksum file. Its name follows the app's own naming pattern. Two check levels, "verified" and "restore-tested", are recorded outside the bundle.
+
 ## Context
 
 The PostgreSQL consumer's backup tooling accepts only backup names matching `<YYYYMMDDTHHMMSSZ>-daily|manual|pre-release-<label>` and a not-before time in `YYYY-MM-DDTHH:MM:SSZ`. Verification inside the sealed bundle would make its hash circular.

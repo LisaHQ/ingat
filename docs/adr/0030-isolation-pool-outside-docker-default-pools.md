@@ -2,6 +2,8 @@
 
 **Status:** Accepted (2026-10-16).
 
+**In plain words:** Test copies take their private networks from `10.250.0.0/20`, a range Docker does not use by default, so a busy machine cannot run out of addresses for test restores.
+
 ## Context
 
 `host init` records an isolation pool from which an executor allocates one free `/24` for each isolated project (drills; restore staging from M2). The design default was `172.30.192.0/20` ([LIFECYCLE.md](../LIFECYCLE.md) §4.1, [ARCHITECTURE.md](../ARCHITECTURE.md) §7.4). Docker's built-in default address pools, used when `DefaultAddressPools` is not configured, hand out `172.17.0.0/16` through `172.31.0.0/16` and `192.168.0.0/16` in `/20` chunks. Once the daemon gives a network `172.30.0.0/16`, no `/24` of the pool is free and every drill refuses. The local integration runs on scratch daemons (upstream Engine 24.0.2 and 29.9.0) used up Docker's default pools, which shows that a busy host can reach that range.

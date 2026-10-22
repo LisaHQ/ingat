@@ -2,6 +2,8 @@
 
 **Status:** Accepted, pending owner decision OD-10 (confirmation of the agent boundary).
 
+**In plain words:** Every command has an approval class. A reads only. B only adds things such as backups, and may run unattended. C changes something and needs the instance name typed, or a plan the owner approved. D can lose data and needs a typed challenge on a real terminal, never a saved plan. AI assistants never get class D.
+
 ## Context
 
 The predecessor's approval model was interactive-only and blocked scheduled backups with exit 20. An approval hash that also unlocks purge lets an agent destroy data (Lens A on `container`).

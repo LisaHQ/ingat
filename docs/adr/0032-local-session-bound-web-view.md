@@ -2,6 +2,8 @@
 
 **Status:** Accepted (owner, 2026-10-19). Changes the non-goal "a web UI" in [ARCHITECTURE.md](../ARCHITECTURE.md) §1.4 and the "Never: web UI" row of [ROADMAP.md](../ROADMAP.md) §4 to "a web service on the host", and narrows the no-listener sentences of ARCHITECTURE §3.3 and §9.3 to one named exception. Supersedes in part [ADR-0022](0022-delegated-concerns.md): its no-listener consequence restates the §1.4 non-goal this ADR narrows, and is narrowed with it. [ADR-0013](0013-approval-classes-and-plan-files.md) (approval classes) and [ADR-0019](0019-secrets.md) (secrets) apply unchanged.
 
+**In plain words:** `ingat ui` will open a read-only web page for your session, reachable only from the machine itself (or through an SSH tunnel) with a secret link printed in your terminal, with plain explanations and a helper that writes commands for you to run. It cannot change anything, and its first version has no access to Docker. Planned.
+
 ## Context
 
 M1 runs end to end on a scratch daemon (not yet in CI or on a host), but every state, pause and recovery is explained only in the design documents. The first real users are newcomers who reach for an automatic tool precisely because they are not experts, and the owner requires every user-facing word to be everyday language (applied to the CLI on 2026-10-19). The CLI prints stable `code` strings and `next` commands, which is the right machine contract but not a picture a newcomer can read. The non-goal list forbade a web UI, a daemon and an agent because each adds a listener, a second enforcement point or a long-running root process; ARCHITECTURE §3.3 and §9.3 say the Docker socket is mounted only into ephemeral containers with no listener.

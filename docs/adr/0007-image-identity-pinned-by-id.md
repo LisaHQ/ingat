@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** Each service runs the exact image Ingat recorded, by its ID, never by a tag that could move. A write-once record keeps where every image came from, and Ingat removes no image before M3.
+
 ## Context
 
 Starting a re-tagged or rebuilt image silently breaks provenance and rollback (Lens B must-fix; a consumer need). The PostgreSQL consumer's release script refuses a release when the previous images are missing; the SQLite consumer's runbook never rebuilds an old tag.

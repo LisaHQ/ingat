@@ -1,6 +1,20 @@
 # Ingat lifecycle: operations, state machines, safety floors, data
 
-Status: **Decided** unless tagged **Planned Mx** or **Open OD-n** (an open owner decision). The M1 operations exist in code; they have run only on local scratch Docker daemons, not yet in CI or on a host ([README](../README.md#status)). Manifest keys referenced here are defined in [MANIFEST_SPEC.md](MANIFEST_SPEC.md); processes, layout and the Compose contract are in [ARCHITECTURE.md](ARCHITECTURE.md).
+> **In plain words.** This document says exactly what Ingat does when it runs a command: the safety rules that nothing can switch off, who must approve what, how an operation moves step by step and recovers from an interruption, every operation in order, how data and backups are handled, what each exit code means, and which jobs to schedule. It is the binding specification. For day-to-day use, the [operator guide](runbooks/operator-guide.md) is shorter.
+
+**Where to find what**
+
+| Section | In plain words |
+|---|---|
+| [§1 Safety floors](#1-safety-floors) | The 17 rules (F1-F17) that the code enforces and no setting can turn off |
+| [§2 Approval classes and commands](#2-approval-classes-and-commands) | Which commands need no approval, which need the instance name typed, which need a challenge on a real terminal; every command with its milestone |
+| [§3 Operation model](#3-operation-model) | How a command is planned, approved and run step by step; what happens after an interruption or an unknown result; the states an app can be in |
+| [§4 Operations](#4-operations) | Each command, step by step: register, prepare, install, update, roll back, back up, check, test restore, restore, start and stop, tasks, clean-up, purge, diagnostics, adoption |
+| [§5 Data](#5-data) | Backup strategies, data areas (generations), the backup format and names, check levels, keep rules, side effects and holds, disk space, off-site copies |
+| [§6 Exit codes](#6-exit-codes-every-command) | What each exit number means |
+| [§7 Scheduled jobs](#7-scheduled-jobs) | Which jobs to schedule, when, and how they behave when something is wrong |
+
+Status: **Decided** unless tagged **Planned Mx** or **Open OD-n** (an open owner decision). The M1 operations exist in code. CI passes on all three real-Docker lanes, and release `v0.1.0` passed `selftest --host` on the first host; no real app runs under Ingat on a host yet ([README](../README.md#status)). Manifest keys referenced here are defined in [MANIFEST_SPEC.md](MANIFEST_SPEC.md); processes, layout and the Compose contract are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Examples name two reference consumers by alias: *the PostgreSQL consumer* (PostgreSQL, backend and web services; an explicit migrate step; role grants after restore; an invariant-check command), mirrored by fixture `fx-pg`, and *the SQLite consumer* (one container; SQLite in a bind-mounted data directory; online app-native backup; an outbound mail queue; migrate at start), mirrored by fixture `fx-lite`. `fx-web` is the stateless fixture ([ARCHITECTURE.md](ARCHITECTURE.md) §10.2).
 

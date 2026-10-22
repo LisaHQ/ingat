@@ -2,6 +2,8 @@
 
 **Status:** Accepted (owner requirement, 2026-10-14; design revised after review the same day). Planned M4 slice 11.
 
+**In plain words:** Ingat can take over an app it did not install, but never in place. The owner stops the old app and makes a backup with the app's own backup command; Ingat imports that backup, test-restores it, and restores it into a new instance. Ingat never touches the old app's containers or data. Planned for M4.
+
 ## Context
 
 The owner requires that Ingat can take over an app deployment it did not create (started by hand, from Container Manager or by another tool), next to backup, verify, restore, migration on update, rollback, purge and disaster recovery. No deployment awaits adoption yet; the requirement covers apps deployed outside Ingat later. Ingat proves ownership only by its own labels ([ARCHITECTURE.md](../ARCHITECTURE.md) §7.5), and Docker cannot add or change labels on an existing container, volume or network, so a foreign object can never become owned. Both v1 consumers back up and restore through their own commands; restore into a never-deployed instance exists from M2, and `import` arrives in M4 slice 10.

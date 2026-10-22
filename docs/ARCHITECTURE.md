@@ -1,6 +1,25 @@
 # Ingat architecture
 
-Status: **Decided** unless tagged otherwise. The M1 code exists and has run only on local scratch Docker daemons, not yet in CI or on a host ([README](../README.md#status)). Status tags: **Decided** (part of the design), **Planned Mx** (decided, built in milestone x), **Open OD-n** (needs an owner decision), **Unverified** (a platform fact the M0 spike or a later spike must confirm). Owner decisions are cited as OD-n: OD-1 (name), OD-2 (LisaHQ namespace), OD-3 (public repository) and OD-11 (app images built in each app's CI: ADR-0026) are decided; the others are open and recorded in the owner's notes. Operations and their state machines are in [`LIFECYCLE.md`](LIFECYCLE.md); manifest syntax is in [`MANIFEST_SPEC.md`](MANIFEST_SPEC.md); milestones are in [`ROADMAP.md`](ROADMAP.md); the reasons for each choice are in the ADRs ([`adr/README.md`](adr/README.md)).
+> **In plain words.** This is the technical design of Ingat: what it promises and what it will never do, how it runs on a machine, how a command becomes a list of safe steps, where it keeps its files, how it guards secrets and refuses unsafe app settings, how it is tested, and which machines it supports. It is the binding specification for everyone who builds or reviews Ingat. To use Ingat, start with the [README](../README.md) and the [operator guide](runbooks/operator-guide.md).
+
+**Where to find what**
+
+| Section | In plain words |
+|---|---|
+| [§1 Product](#1-product) | What Ingat promises, who uses it, its scope, and what it will never do |
+| [§2 System context](#2-system-context) | One picture of the pieces: you, the `ingat` command, the helper container, your apps and the two folders |
+| [§3 Runtime and distribution](#3-runtime-and-distribution) | What is inside the Ingat image, the small start script, install and upgrade, and the version gate that decides which commands may run on a machine |
+| [§4 Execution model](#4-execution-model) | Why changes run in a separate helper container, terminal tasks, cancelling, and cleaning up leftovers after a crash |
+| [§5 Modules and layering](#5-modules-and-layering) | How the code is split into layers, the size budgets, and the tests that guard the split |
+| [§6 Compose invocation](#6-compose-invocation) | How Ingat calls Docker Compose: always on the app's own files plus one generated file |
+| [§7 On-disk layout, records and locks](#7-on-disk-layout-records-and-locks) | Which files Ingat keeps where, the rules for writing them, and the locks that let only one command work on an app at a time |
+| [§8 Templates](#8-templates) | The fixed set of placeholders an app manifest may use |
+| [§9 Security and trust model](#9-security-and-trust-model) | What Ingat trusts, what it defends against, the Docker socket, secrets, and the app settings it refuses |
+| [§10 Testing and certification](#10-testing-and-certification) | The test levels, the test apps, the required test suites, and how a machine gets certified |
+| [§11 Hosts and support matrix](#11-hosts-and-support-matrix) | Which machines are supported, how their differences are handled, the checklist for a new app, and the minimum machine |
+| [§12 Risks](#12-risks) | Known risks and how each one is reduced |
+
+Status: **Decided** unless tagged otherwise. The M1 code exists. CI passes on all three real-Docker lanes, and release `v0.1.0` passed `selftest --host` on the first host; no exit gate has passed yet ([README](../README.md#status)). Status tags: **Decided** (part of the design), **Planned Mx** (decided, built in milestone x), **Open OD-n** (needs an owner decision), **Unverified** (a platform fact the M0 spike or a later spike must confirm). Owner decisions are cited as OD-n: OD-1 (name), OD-2 (LisaHQ namespace), OD-3 (public repository) and OD-11 (app images built in each app's CI: ADR-0026) are decided; the others are open and recorded in the owner's notes. Operations and their state machines are in [`LIFECYCLE.md`](LIFECYCLE.md); manifest syntax is in [`MANIFEST_SPEC.md`](MANIFEST_SPEC.md); milestones are in [`ROADMAP.md`](ROADMAP.md); the reasons for each choice are in the ADRs ([`adr/README.md`](adr/README.md)).
 
 ## 1. Product
 
@@ -526,7 +545,7 @@ Support tiers say which hosts Ingat supports and what evidence each needs; they 
 | Support tier | Hosts | Evidence required | Status |
 |---|---|---|---|
 | **Support tier 1** | Linux hosts on any distribution (bare metal, VM, VPS or a board) running upstream Docker Engine (docker-ce from Docker's repositories, or a distribution package) on an Engine line that CI tests (today 24.0 and one exact 29.x), on `x86_64`, or on `aarch64` for the lines the arm64 lane passes (29.x only) | The upstream dind lanes (§10.1) plus a local `selftest --host` certification of each platform build (§10.4) | Covered by the CI lanes from M1; the first committed generic Linux certification (VPS or server) is Planned M4 slice 12. An upstream Engine 24.0 or later on a line without a CI lane runs gate tiers 0 and 1 only, until a tool release adds the lane |
-| **Support tier 2** | Vendor-built engines on appliances: Synology Container Manager first (the DSM profile, §11.2); other vendors' appliances later, each through its own platform profile | A platform profile: the full certification checklist and a committed `support/hosts` file for each platform build line, plus a local `selftest --host` after every update (§10.4) | Synology DSM 7.4 with Container Manager 24.0.2 on `x86_64`: the first real deployment. No certification exists yet; the first is an M1 exit-gate item |
+| **Support tier 2** | Vendor-built engines on appliances: Synology Container Manager first (the DSM profile, §11.2); other vendors' appliances later, each through its own platform profile | A platform profile: the full certification checklist and a committed `support/hosts` file for each platform build line, plus a local `selftest --host` after every update (§10.4) | Synology DSM 7.4 with Container Manager 24.0.2 on `x86_64`: the first real deployment. Its first certification (DSM 7.4.1 build 90080 with Container Manager 24.0.2-1706) is committed in `support/hosts/`; the manual checklist of §10.4 step 4 is pending (an M1 exit-gate item) |
 | **Not supported in v1** | Rootless Docker; Docker Desktop on Windows or macOS for production use (development only); Podman; Kubernetes or Swarm; multi-host setups; Docker Engine older than 24.0 (API below 1.43), which also excludes Synology DSM 7.1 and earlier with the legacy Docker package (Engine 20.10, API 1.41, Compose v1) | — | No tier, CI lane or certification will be added in v1. DSM 7.1 is also out of extended life since June 2025, so no further fixes are expected |
 
 Support claims name only tested combinations: an Engine line and architecture whose CI lane passed, plus a certification of the platform build.

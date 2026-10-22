@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** One executor runs every operation as a list of typed steps from a fixed set. Each step is written down before it runs; helper containers get predictable names and are always stopped before the lock is released; and an interrupted backup or check is undone automatically, so it never blocks the next one.
+
 ## Context
 
 The predecessor's kind × phase tables, supersession and pairing produced deadlocks and dead ends (found by its reviews and real-Docker runs). Killing a `compose exec/run` client does not stop the server-side process (Lens B must-fix). A crashed nightly backup must not block the next one (Lens B must-fix).

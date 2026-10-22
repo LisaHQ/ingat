@@ -2,6 +2,8 @@
 
 **Status:** Accepted (owner decision OD-11, option (b), 2026-10-15).
 
+**In plain words:** Ingat never builds app images. Each app's CI builds and publishes them; Ingat pulls them, pins them by ID and digest, and accepts an image only when its labels name the exact commit being installed.
+
 ## Context
 
 Owner decision OD-11 asked where app images are built: (a) on the host in `prepare` with a buildx bundled in the tool image, or (b) in each app's CI, published to a registry and pulled by the host. Both reference consumers' repositories are public, so images published to GHCR are free to store and pull anonymously. An on-host build loads the host beside its live instances and drills, fills the Docker root with build cache, rebuilds the same commit into different image IDs on another host, and was the largest unverified item of M1-M2 (spike S4's build checks). The design left "the key that names the source" to this ADR ([ROADMAP.md](../ROADMAP.md) M0, [MANIFEST_SPEC.md](../MANIFEST_SPEC.md) §2.1).

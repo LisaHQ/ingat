@@ -2,6 +2,8 @@
 
 **Status:** Accepted (2026-10-15).
 
+**In plain words:** Self-tests and CI use small local git repositories inside Ingat's own folder (`file://` addresses there and nowhere else), so they take the same path as a real app without needing a git server.
+
 ## Context
 
 `selftest --host` (the first item of the M1 exit gate) and the CI suites run the lifecycle loop on the fixtures `fx-lite` and `fx-web` through the same git source path a real app uses ([ARCHITECTURE.md](../ARCHITECTURE.md) §10.4). The instance schema allows only `ssh` and `https` repository URLs, and the git adapter allows only those protocols, so a fixture would need a git server on every host that runs `selftest`, with its own keys.

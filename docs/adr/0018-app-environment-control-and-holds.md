@@ -2,6 +2,8 @@
 
 **Status:** Accepted.
 
+**In plain words:** An app declares every setting it accepts. Some may only change with the strongest approval, some are forbidden, and some Ingat fills in itself. Test copies get holds: settings that stop them from sending real mail or reaching the outside.
+
 ## Context
 
 The SQLite consumer's real outbound mail sending requires an owner-only enabling variable; its image fixes its database and data-directory paths; restoring older data into a live topology can repeat outbound mail.
