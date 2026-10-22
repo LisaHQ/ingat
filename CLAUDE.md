@@ -10,7 +10,7 @@ precedence unless the owner explicitly overrides it in the current task.
 - Use English for canonical documentation, code, comments, public APIs, identifiers, file
   names, commit messages, technical documentation, and command examples unless the project
   explicitly requires otherwise.
-- Operator runbooks get a matching `.vi.md` Vietnamese translation beside the English document; English is canonical.
+- Every Markdown document except `CLAUDE.md` gets a matching `.vi.md` translation in plain everyday Vietnamese beside it; English is canonical, and a change to an English document updates its translation in the same change.
 - Write every text a user reads (CLI messages and help, the web view, runbooks, user docs) in common, easy words for
   readers who are not technical experts: what happened, what it means, what to do next. Stable `code` strings and
   identifiers stay unchanged (owner rule).
