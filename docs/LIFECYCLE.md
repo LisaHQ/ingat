@@ -1,5 +1,7 @@
 # Ingat lifecycle: operations, state machines, safety floors, data
 
+**English** · [Tiếng Việt](LIFECYCLE.vi.md)
+
 > **In plain words.** This document says exactly what Ingat does when it runs a command: the safety rules that nothing can switch off, who must approve what, how an operation moves step by step and recovers from an interruption, every operation in order, how data and backups are handled, what each exit code means, and which jobs to schedule. It is the binding specification. For day-to-day use, the [operator guide](runbooks/operator-guide.md) is shorter.
 
 **Where to find what**

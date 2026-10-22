@@ -1,6 +1,8 @@
 # Architecture decision records
 
-> **In plain words.** An ADR (architecture decision record) explains one choice: the problem, what was decided, what else was considered, and what follows from it. Accepted ADRs are records: their decisions are never reworded, and a change is a new ADR. Each ADR starts with a short plain-words summary under its status line; the record itself stays the reference.
+**English** · [Tiếng Việt](README.vi.md)
+
+> **In plain words.** An ADR (architecture decision record) explains one choice: the problem, what was decided, what else was considered, and what follows from it. Accepted ADRs are records: their decisions are never reworded, and a change is a new ADR. Each ADR starts with a short plain-words summary under its status line; the record itself stays the reference. Every record has a Vietnamese translation beside it, `NNNN-<slug>.vi.md`.
 
 Each file records one decision: its context, the decision, the alternatives considered and the consequences. The design documents ([ARCHITECTURE.md](../ARCHITECTURE.md), [LIFECYCLE.md](../LIFECYCLE.md), [MANIFEST_SPEC.md](../MANIFEST_SPEC.md), [ROADMAP.md](../ROADMAP.md)) cite these records by number.
 

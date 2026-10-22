@@ -1,5 +1,7 @@
 # Ingat app manifest and instance config
 
+**English** · [Tiếng Việt](MANIFEST_SPEC.vi.md)
+
 > **In plain words.** An app works with Ingat through two small TOML files. The **app manifest** `ingat.toml` is written by the app's developers and lives in the app's repository: it describes the app's services, data, tasks and checks, and holds no values of any particular machine. The **instance file** `instance.toml` is written by the person who runs the app and stays on that machine: name, source, ports, addresses, keep rules. This document defines every key of both files and ends with complete examples. App developers: start with §1, the [onboarding checklist](ARCHITECTURE.md#113-generality-rule), and the example closest to your app (§11 for one container with SQLite, §8 for several services with PostgreSQL, §13 for a stateless site).
 
 **Where to find what**

@@ -1,5 +1,7 @@
 # Ingat architecture
 
+**English** · [Tiếng Việt](ARCHITECTURE.vi.md)
+
 > **In plain words.** This is the technical design of Ingat: what it promises and what it will never do, how it runs on a machine, how a command becomes a list of safe steps, where it keeps its files, how it guards secrets and refuses unsafe app settings, how it is tested, and which machines it supports. It is the binding specification for everyone who builds or reviews Ingat. To use Ingat, start with the [README](../README.md) and the [operator guide](runbooks/operator-guide.md).
 
 **Where to find what**
