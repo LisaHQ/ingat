@@ -147,7 +147,7 @@ Bản tối thiểu dùng được (MVP, M0-M2): khoảng 5.5k dòng (khoảng 5
 - Một mốc vượt quá 1.5 × số dòng ước lượng thì dừng lại để viết một ADR lập lại kế hoạch (một công cụ triển khai nội bộ trước đây đã phình khoảng mười lần, từ khoảng 3k lên khoảng 29k dòng, mà chưa từng chạy trên một máy thật nào).
 - Không tính năng nào được merge nếu thiếu các bài kiểm thử trên Docker thật của nó.
 - Cấu trúc manifest phiên bản 1 (schema 1) là bản nháp cho đến điều kiện hoàn thành mốc M2: M1 chỉ làm những gì ứng dụng SQLite và các ứng dụng thử dùng, và các mục cấu hình chỉ ứng dụng PostgreSQL cần có thể thay đổi khi việc đưa ứng dụng đó vào dùng cho thấy cần thiết. Sau điều kiện của M2, cấu trúc được chốt cố định; mọi thay đổi ở phần lõi (core) mà bất kỳ ứng dụng nào buộc phải có, kể cả một ứng dụng mới (quy tắc tổng quát, [`ARCHITECTURE.md`](ARCHITECTURE.vi.md) §11.3), được ghi là một lần thất bại về tính tổng quát (generality failure) trong một ADR.
-- Tài liệu chỉ mô tả những gì đã có hoặc đã quyết định; mỗi mốc cập nhật trạng thái trong [README](../../README.vi.md) và `tested.json`.
+- Tài liệu chỉ mô tả những gì đã có hoặc đã quyết định; mỗi mốc cập nhật trạng thái trong [README](../../README.vi.md) và [`status.vi.md`](../guide/status.vi.md), và `tested.json`.
 
 ## 4. Việc hoãn lại, kèm điều kiện kích hoạt rõ ràng
 

@@ -147,7 +147,7 @@ The SQLite consumer is the simplest real consumer: one container, one bind store
 - A milestone that passes 1.5 × its line estimate stops for a re-plan ADR (an earlier in-house deployment controller grew about tenfold, from about 3k to about 29k lines, with no host run).
 - No feature merges without its real-Docker tests.
 - Manifest schema 1 is a draft until the M2 exit gate: M1 implements only what the SQLite consumer and the fixtures use, and keys only the PostgreSQL consumer needs may change when its onboarding shows a need. After the M2 gate the schema is frozen; a core change forced by any consumer, including a new app (the generality rule, [`ARCHITECTURE.md`](ARCHITECTURE.md) §11.3), is recorded as a generality failure in an ADR.
-- Docs describe only what exists or is decided; each milestone updates [README](../../README.md) status and `tested.json`.
+- Docs describe only what exists or is decided; each milestone updates the status in [README](../../README.md) and [`status.md`](../guide/status.md), and `tested.json`.
 
 ## 4. Deferred work with explicit triggers
 

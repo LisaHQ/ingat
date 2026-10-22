@@ -1,5 +1,5 @@
-"""The plain words of the messages people read (README conventions): one fixed pairing per internal term, shared by
-the layers that print it. The machine `code` strings beside these lines never change."""
+"""The plain words of the messages people read (docs/guide/glossary.md): one fixed pairing per internal term, shared
+by the layers that print it. The machine `code` strings beside these lines never change."""
 
 from ingat import brand
 
