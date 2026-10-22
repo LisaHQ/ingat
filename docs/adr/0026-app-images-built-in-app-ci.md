@@ -2,7 +2,7 @@
 
 **Status:** Accepted (owner decision OD-11, option (b), 2026-10-15).
 
-**In plain words:** Ingat never builds app images. Each app's CI builds and publishes them; Ingat pulls them, pins them by ID and digest, and accepts an image only when its labels name the exact commit being installed.
+**In plain words:** Ingat never builds app images. Each app's CI builds and publishes them; Ingat pulls them, pins them by ID and digest, and accepts an image the app builds itself only when its labels name the exact commit being installed.
 
 ## Context
 

@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận.
 
-**Nói đơn giản:** Mọi thay đổi với Docker chạy trong một container trợ giúp riêng, tự chạy tiếp một mình; terminal của bạn chỉ theo dõi. Vì vậy một kết nối SSH bị rớt hay một cửa sổ bị đóng không bao giờ làm dừng một lần cập nhật dữ liệu giữa chừng.
+**Nói đơn giản:** Hầu hết mọi thay đổi với Docker chạy trong một container trợ giúp riêng, tự chạy tiếp một mình; terminal của bạn chỉ theo dõi. Vì vậy một kết nối SSH bị ngắt hay một cửa sổ bị đóng không thể làm dừng giữa chừng một lần sao lưu, một lần cập nhật hay một lần cập nhật dữ liệu. Ngoại lệ là tác vụ trò chuyện với bạn trong terminal: nó chạy từ chính cửa sổ của bạn.
 
 ## Bối cảnh
 

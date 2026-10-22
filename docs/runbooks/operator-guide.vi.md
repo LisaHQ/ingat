@@ -6,11 +6,11 @@ Hướng dẫn này dành cho người chạy Ingat trên một máy: bạn cài
 
 Hướng dẫn áp dụng cho phiên bản 0.1.0 (mốc M1), tức các lệnh đã có trong mã hôm nay ([README](../../README.vi.md#dùng-hằng-ngày)). Khôi phục, việc duyệt các lệnh có thể làm mất dữ liệu (lớp D), `secret set` và việc giao một kế hoạch cho trợ lý AI (`plan`/`apply`) sẽ có ở M2 ([`ROADMAP.vi.md`](../ROADMAP.vi.md)); hướng dẫn nói rõ ở những chỗ liên quan.
 
-**Cách đọc các ví dụ.** Chạy mọi lệnh bằng tài khoản quản trị của máy, root. `ingat` là lệnh `ingat` mà trình cài đặt tạo ra: `/srv/ingat/bin/ingat` với các thư mục mặc định, hoặc `/volume1/ingat/bin/ingat` trên NAS Synology. `lite-test` là một bản cài ví dụ (một bản cài của một ứng dụng, instance) của ứng dụng mẫu `fx-lite`.
+**Cách đọc các ví dụ.** Chạy mọi lệnh bằng tài khoản quản trị của máy, root. `ingat` là lệnh `ingat` mà trình cài đặt tạo ra: `/srv/ingat/bin/ingat` với các thư mục mặc định, hoặc `/volume1/ingat/bin/ingat` trên NAS Synology. `lite-test` là một bản cài ví dụ (một bản sao đã cài đặt của một ứng dụng, instance) của ứng dụng mẫu `fx-lite`.
 
 **Vài từ bạn sẽ gặp:**
 
-- **bản cài** (instance): một bản cài của một ứng dụng, có tên riêng, ví dụ `lite-test`.
+- **bản cài** (instance): một bản sao đã cài đặt của một ứng dụng, có tên riêng, ví dụ `lite-test`.
 - **các phần ghi dữ liệu** (writers): những phần của ứng dụng thay đổi dữ liệu của bạn.
 - **bản sao lưu**: một bản sao lưu đã niêm phong của một bản cài (bản ghi của Ingat gọi nó là *bundle*).
 - **`INGAT_ROOT`:** thư mục riêng của Ingat. **`INGAT_BACKUPS`:** thư mục chứa các bản sao lưu.
@@ -20,10 +20,10 @@ Hướng dẫn áp dụng cho phiên bản 0.1.0 (mốc M1), tức các lệnh �
 - **Máy.** Bạn cần một Docker Engine Linux 24.0 trở lên có plugin `docker compose`, truy cập được bằng root qua socket cục bộ; SSH với `sudo -i`; một bộ lập lịch gửi email cho bạn khi một việc bị lỗi (systemd timer, cron, hoặc Task Scheduler trên NAS Synology); và một công cụ chép các bản sao lưu sang nơi khác (restic, borg, rsync, hoặc Hyper Backup trên NAS Synology). Chi tiết: [`ARCHITECTURE.vi.md`](../ARCHITECTURE.vi.md#114-yêu-cầu-tối-thiểu-cho-máy) §11.4.
 - **Hai thư mục.**
   - `INGAT_ROOT` giữ các bản ghi của Ingat và dữ liệu đang dùng của những ứng dụng lưu dữ liệu trong thư mục thường. Mặc định `/srv/ingat`. Nó phải thuộc root với quyền `0700`, tức chỉ root mở được, và phải nằm trên ổ đĩa bên trong máy này, không bao giờ trên ổ mạng.
-  - `INGAT_BACKUPS` giữ các bản sao lưu đã hoàn tất. Mỗi bản được niêm phong bằng mã kiểm tra, nên mọi thay đổi về sau trên nó đều bị phát hiện. Mặc định `/srv/ingat-backups`. Chỉ root ghi vào đó, và đây là thư mục mà bản sao ở nơi khác của bạn được chép từ đó ra.
+  - `INGAT_BACKUPS` giữ các bản sao lưu đã hoàn tất. Mỗi bản được niêm phong bằng mã kiểm tra, nên mọi thay đổi về sau trên nó đều bị phát hiện. Mặc định `/srv/ingat-backups`. Chỉ root ghi vào đó, và bản sao ở nơi khác của bạn được chép từ thư mục này.
   - Trên NAS Synology, hãy truyền `--root /volume1/ingat --backups /volume1/ingat-backups` khi cài. Ở đó không bao giờ dùng mặc định `/srv`.
-- **Ingat chỉ nhìn thấy hai thư mục này.** Nó chạy trong container riêng của nó, chỉ được cho thấy `INGAT_ROOT` và `INGAT_BACKUPS`, không thấy gì khác trên máy. Vì vậy mọi đường dẫn tệp bạn đưa cho nó (`init --config`, `validate <repo-dir>`, `validate --instance`, các tệp `--input` của tác vụ) phải là đường dẫn đầy đủ nằm trong một trong hai thư mục đó, nếu không Ingat sẽ không tìm thấy tệp. Hãy đặt những tệp như vậy, và mã nguồn ứng dụng đã tải về, vào hộp thư đến (inbox): `INGAT_ROOT/inbox/`.
-- **Ứng dụng của bạn** cần có `ingat.toml` trong repository và các image do CI của nó build ([`MANIFEST_SPEC.vi.md`](../MANIFEST_SPEC.vi.md); danh sách việc khi đưa ứng dụng vào trong [`ARCHITECTURE.vi.md`](../ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) §11.3). `ingat validate <repo-dir>` kiểm tra một bản mã nguồn đã tải về mà không thay đổi gì, ví dụ một bản nằm dưới `INGAT_ROOT/inbox/`.
+- **Ingat chỉ nhìn thấy hai thư mục này.** Nó chạy trong container riêng, và container đó chỉ thấy `INGAT_ROOT` và `INGAT_BACKUPS`, không thấy gì khác trên máy. Vì vậy mọi đường dẫn tệp bạn đưa cho nó (`init --config`, `validate <repo-dir>`, `validate --instance`, các tệp `--input` của tác vụ) phải là đường dẫn đầy đủ nằm trong một trong hai thư mục đó, nếu không Ingat sẽ không tìm thấy tệp. Hãy đặt những tệp như vậy, và mã nguồn ứng dụng đã tải về, vào thư mục nhận tệp (inbox): `INGAT_ROOT/inbox/`.
+- **Ứng dụng của bạn** cần có `ingat.toml` trong repository và các image do CI của nó build ([`MANIFEST_SPEC.vi.md`](../MANIFEST_SPEC.vi.md); danh sách việc khi đưa ứng dụng vào trong [`ARCHITECTURE.vi.md`](../ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) §11.3). `ingat validate <repo-dir>` kiểm tra một bản mã nguồn đã tải về mà không cần mạng và không thay đổi gì, ví dụ một bản nằm dưới `INGAT_ROOT/inbox/`.
 - **Giữ Docker ở một phiên bản đã kiểm thử.** Các lệnh có thay đổi chỉ chạy trên một dòng phiên bản Docker Engine mà bản phát hành Ingat này đã được kiểm thử cùng (danh sách nằm sẵn trong Ingat, tệp `tested.json`), và chỉ sau lần kiểm tra máy ở mục 2, việc bạn làm lại sau mỗi lần cập nhật máy. Trên một phiên bản Docker khác, `ingat status` báo `not a tested combination of this release`: bạn vẫn xem được mọi thứ và vẫn sao lưu được theo cách không dừng ứng dụng, nhưng mọi lệnh thay đổi ứng dụng hay dữ liệu đều từ chối. Vì vậy đừng để Docker tự cập nhật: trên máy Linux hãy ghim `docker-ce` (`apt-mark hold`), và chỉ lên Docker mới cùng với một bản phát hành Ingat đã được kiểm thử với nó.
 
 ## 2. Cài Ingat và kiểm tra máy
@@ -32,8 +32,9 @@ Làm một lần cho mỗi máy. Bằng root, với `install.sh`, `facts.sh` và
 
 ```sh
 sudo -i
+cd /path/to/downloads   # thư mục bạn đã lưu các tệp phát hành
 sh install.sh --version 0.1.0          # thư mục mặc định; thêm --root và --backups trên NAS Synology
-ingat host init                        # gắn Ingat với Docker này; gõ tên máy để duyệt
+ingat host init                        # gắn Ingat với Docker này; gõ đúng tên mà lệnh hostname in ra để duyệt
 sh facts.sh > facts.json               # ghi lại thông tin về máy (không thay đổi gì); giữ tệp cùng ghi chú của bạn
 ingat selftest --host                  # kiểm thử Ingat trên máy này: in một dòng tóm tắt, rồi im lặng tới khi xong (vài phút)
 ingat status                           # "gate tier 2 (everything)" ở những dòng cuối: từ giờ Ingat được phép thay đổi ở máy này
@@ -44,12 +45,12 @@ Trên NAS Synology, đưa cho `facts.sh` cùng hai thư mục đó: `sh facts.sh
 **Bạn sẽ thấy gì.**
 
 - `install.sh` in các dòng tự kiểm tra offline và `installed version …`.
-- `host init` in phiên bản Docker, storage driver và kernel, rồi hoặc `gate tier 2: this platform build is certified` (hệ thống và Docker của máy này đã được duyệt cho các lệnh có thay đổi), hoặc lý do vì sao chưa được.
+- `host init` in phiên bản Docker, storage driver và kernel, rồi, sau các dòng `risk:` nếu có, hoặc `this computer's Docker build is certified, so every command may run (gate tier 2)` (máy này đã được duyệt cho các lệnh có thay đổi), hoặc `changes are not allowed on this computer yet (gate tier 2 refuses): …` kèm lý do.
 - `selftest --host` in một dòng `PASS` cho mỗi bước kiểm tra và đường dẫn của tệp chứng nhận nó đã ghi.
 
-**Sau mỗi lần cập nhật hệ điều hành, kernel hoặc Docker**, hãy chạy lại `ingat selftest --host`. Chừng nào bạn chưa chạy, `status` báo `uncertified` dưới `attention:`, và lần thử khôi phục theo lịch từ chối chạy (exit 2). Các bản sao lưu hằng đêm vẫn chạy chừng nào ứng dụng sao lưu được mà không cần dừng (như `fx-lite`).
+**Sau mỗi lần cập nhật hệ điều hành, kernel hoặc Docker**, hãy chạy lại `ingat selftest --host`. Chừng nào bạn chưa chạy, `ingat status` hiện một dòng `needs your attention (uncertified)`, và lần thử khôi phục theo lịch từ chối chạy (exit 2). Các bản sao lưu hằng đêm vẫn chạy chừng nào ứng dụng sao lưu được mà không cần dừng (như `fx-lite`), nhưng chúng giữ lại mọi bản sao lưu cũ cho tới khi bạn chạy lại `ingat selftest --host`.
 
-**Máy không có internet?** `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` nạp Ingat từ tệp phát hành thay vì tải về.
+**Máy không có internet?** `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` nạp Ingat từ tệp phát hành thay vì tải về (trên máy `aarch64`, dùng `ingat-0.1.0-arm64.tar`). Hãy tải tệp này từ cùng trang phát hành bằng một máy khác rồi chép nó vào cùng thư mục.
 
 ## 3. Thêm ứng dụng của bạn
 
@@ -118,11 +119,11 @@ ingat deploy lite-test v1.2.0
 
 | Việc | Lệnh | Ghi chú |
 |---|---|---|
-| Xem trạng thái | `ingat status lite-test` | Mỗi dòng bắt đầu bằng `attention:` là một việc cần đến bạn; khi đó lệnh kết thúc với mã thoát 5. Dòng cuối, `next:`, là lệnh cần chạy. `ingat status` không kèm tên thì hiện mọi bản cài trên máy này. |
+| Xem trạng thái | `ingat status lite-test` | Mỗi dòng bắt đầu bằng `needs your attention` là một việc cần đến bạn; khi đó lệnh kết thúc với mã thoát 5. Dòng cuối, `next:`, là lệnh cần chạy. `ingat status` không kèm tên thì hiện mọi bản cài trên máy này. |
 | Kiểm tra kỹ hơn | `ingat doctor lite-test` | Kiểm tra thiết lập của ứng dụng theo các quy tắc an toàn, việc máy đã được duyệt cho thay đổi chưa, các tệp bí mật, trùng cổng và các thư mục. |
 | Container, log, các thao tác đã qua, các bản sao lưu | `ingat ps lite-test`, `ingat logs lite-test app --since 1h`, `ingat history lite-test`, `ingat bundles lite-test` | Những lệnh này chỉ đọc; chúng không bao giờ ghi gì. |
 | Sao lưu ngay | `ingat backup lite-test --reason "before the mail change"` | Không cần duyệt. Trong lúc chạy, các phần ghi dữ liệu sẽ dừng, trừ khi ứng dụng sao lưu được toàn bộ dữ liệu ngay khi đang chạy (như `fx-lite`). |
-| Kiểm tra một bản sao lưu | `ingat verify lite-test --latest` | Kiểm tra bản sao lưu vẫn đúng y như lúc được ghi (không thiếu, không hỏng tệp nào) và chạy các bước kiểm tra riêng của ứng dụng trên nó. |
+| Kiểm tra một bản sao lưu | `ingat verify lite-test --latest` | Kiểm tra bản sao lưu vẫn đúng y như lúc được ghi (không thiếu, không hỏng tệp nào) và chạy các bước kiểm tra riêng của ứng dụng trên nó, nếu ứng dụng có. |
 | Thử khôi phục một bản sao lưu | `ingat verify lite-test --latest --restore-test` | Chứng minh bản sao lưu thật sự khôi phục được: Ingat khôi phục nó vào một bản tạm, tách riêng của ứng dụng, không chạm được tới dữ liệu đang dùng của bạn, kiểm tra, rồi xóa bản tạm đó. Ứng dụng đang chạy không bị đụng tới. Sau đó bản sao lưu được đánh dấu `restore-tested`. |
 | Xóa bản sao lưu cũ | `ingat prune lite-test --bundles`, rồi chạy lại với `--apply` | Lệnh đầu chỉ liệt kê những bản cũ sẽ bị xóa theo các thiết lập giữ lại trong tệp bản cài của bạn (`keep_daily`, `keep_weekly`, `keep_monthly`); chưa có gì bị xóa cho tới khi bạn thêm `--apply`. `scheduled backup` hằng đêm tự làm việc dọn này. |
 | Dừng, chạy, khởi động lại | `ingat stop lite-test`, `ingat start lite-test`, `ingat restart lite-test` | Lớp C: gõ tên mỗi lần. |
@@ -170,24 +171,24 @@ Tạo các việc này trong bộ lập lịch của máy bằng root, với đ�
 
 Trên NAS Synology, lệnh là `/volume1/ingat/bin/ingat` và thư mục sao lưu là `/volume1/ingat-backups`.
 
-- `scheduled backup` in một dòng khi thành công, và xóa các bản sao lưu cũ theo các thiết lập giữ lại trong tệp bản cài của bạn (`keep_daily`, `keep_weekly`, `keep_monthly`).
+- `scheduled backup` in một dòng khi thành công, và xóa các bản sao lưu cũ theo các thiết lập giữ lại trong tệp bản cài của bạn (`keep_daily`, `keep_weekly`, `keep_monthly`), trừ khi máy chưa được chứng nhận (mục 2).
 - `scheduled status` im lặng (exit 0) chừng nào không có gì mới cần bạn chú ý. Nó chỉ in ra, và vì thế bộ lập lịch mới gửi email cho bạn, khi một vấn đề xuất hiện hoặc hết đi. Một vấn đề kéo dài nhiều ngày chỉ gửi email cho bạn một lần, không phải mỗi giờ.
 - Nếu một việc bắt đầu khi việc khác còn đang chạy trên cùng bản cài, việc thứ hai dừng với exit 2 và bạn nhận được email. Hãy để các việc cách nhau đủ xa.
 - Một việc chạy theo lịch không bao giờ làm được điều gì cần bạn gõ duyệt; nó từ chối.
 
 ## 8. Khi có sự cố
 
-**Phiên SSH bị ngắt giữa một thao tác.** Không có gì dừng lại. Mọi thao tác (deploy, backup, verify, thử khôi phục, start, stop, restart, resume, abandon) chạy trong một bộ phận phụ riêng trên máy (container riêng của nó), không nằm trong cửa sổ SSH của bạn, nên nó chạy tiếp mà không cần bạn. Kết nối lại và chạy `ingat attach lite-test` để theo dõi tới cuối.
+**Phiên SSH bị ngắt giữa một thao tác.** Không có gì dừng lại. Mọi thao tác (deploy, backup, verify, thử khôi phục, start, stop, restart, resume, abandon) chạy trong một trình trợ giúp riêng trên máy (container riêng của nó), không nằm trong cửa sổ SSH của bạn, nên nó chạy tiếp mà không cần bạn. Kết nối lại và chạy `ingat attach lite-test` để theo dõi tới cuối.
 
 - Ngoại lệ là tác vụ trò chuyện với bạn trong terminal (`bootstrap-config`, `bootstrap-new-code`). Nó chạy từ cửa sổ của bạn, nên mất cửa sổ có thể để nó dang dở trong khi container của nó vẫn chạy. Sau khi bị ngắt, hãy chạy lệnh kế tiếp của bạn; nếu nó trả lời `task-running`, chạy đúng lệnh `docker stop` mà nó in ra, rồi `ingat status lite-test`.
 - Khi bạn đang theo dõi một thao tác, Ctrl-C hỏi `[d]etach or [c]ancel?`. Detach chỉ ngừng theo dõi, không bao giờ dừng thao tác. Trong một tác vụ terminal, Ctrl-C yêu cầu tác vụ dừng.
 
-**`status` hiện `attention: open-operation: operation <n> (<kind>) is interrupted` (hoặc `paused`), exit 5.** Một thao tác đã bắt đầu mà chưa xong: nó bị cắt ngang (interrupted) hoặc đang chờ bạn (paused). Bạn có hai lựa chọn, và dòng `next:` của `status` nêu lựa chọn đúng:
+**`status` hiện `needs your attention (open-operation): operation <n> (<kind>) was interrupted before it finished` (hoặc `… is paused and waiting for you`), exit 5.** Một thao tác đã bắt đầu mà chưa xong: nó bị cắt ngang (interrupted) hoặc đang chờ bạn (paused). Bạn có hai lựa chọn, và dòng `next:` của `status` nêu lựa chọn đúng:
 
 - `ingat resume lite-test` làm tiếp từ bước đầu tiên chưa xong;
 - `ingat abandon lite-test` hoàn tác những gì hoàn tác được và đóng thao tác lại.
 
-Nếu `ingat attach` thấy bộ phận phụ đã biến mất, nó kết thúc với exit 4 và cùng mã `open-operation`; khi đó hãy chạy `status`. Một lần chuẩn bị, sao lưu, kiểm tra hay thử khôi phục bị cắt ngang sẽ được lệnh kế tiếp mở một thao tác trên bản cài này (một lần sao lưu, một lần deploy, một lần start …) tự hoàn tác rồi đóng lại; trước đó `status` vẫn tiếp tục hiện nó. Nếu lần tự dọn đó không hoàn tác được hết, lệnh mới từ chối với `needs-review`: chạy `ingat status lite-test` và làm theo `next:` của nó.
+Nếu `ingat attach` thấy trình trợ giúp đã biến mất, nó kết thúc với exit 4 và cùng mã `open-operation`; khi đó hãy chạy `status`. Nếu một lần chuẩn bị, sao lưu, kiểm tra hay thử khôi phục bị cắt ngang, thì lệnh kế tiếp có mở một thao tác trên bản cài này (một lần sao lưu, một lần deploy, một lần start …) sẽ tự động hoàn tác phần dang dở đó rồi đóng nó lại; cho tới lúc đó `status` vẫn tiếp tục hiện nó. Nếu lần tự dọn đó không hoàn tác được hết, lệnh mới từ chối với `needs-review`: chạy `ingat status lite-test` và làm theo `next:` của nó.
 
 **`task-running`.** Một chương trình phụ (container tác vụ) do thao tác khởi động vẫn đang chạy, và Ingat sẽ không đi tiếp cho tới khi nó dừng. Chép và chạy đúng lệnh `docker stop <container>` mà thông báo in ra, rồi `ingat resume lite-test` hoặc `ingat abandon lite-test` (`ingat status lite-test` nêu lệnh đúng).
 
@@ -199,7 +200,7 @@ Nếu `ingat attach` thấy bộ phận phụ đã biến mất, nó kết thúc
 
 **`not a tested combination`.** Xem mục 1: ghim Docker ở một phiên bản đã kiểm thử, hoặc chờ một bản phát hành Ingat kiểm thử phiên bản mới.
 
-**`… lock is busy: op …` hoặc `container ingat-exec-lite-test is still present`, exit 2.** Một lệnh khác vẫn đang làm việc trên bản cài này (hoặc, với `init` và `selftest --host`, trên máy này), và mỗi lúc chỉ một lệnh được làm. Chưa có gì thay đổi. `ingat attach lite-test` cho bạn theo dõi thao tác đang chạy; nếu không, chờ lệnh mà thông báo nêu tên chạy xong, rồi thử lại.
+**`Another command is still running and holds the lock …` (mã `lock-busy`) hoặc `container ingat-exec-lite-test is still present`, exit 2.** Một lệnh khác vẫn đang làm việc trên bản cài này (hoặc, với `init` và `selftest --host`, trên máy này), và mỗi lúc chỉ một lệnh được làm. Chưa có gì thay đổi. `ingat attach lite-test` cho bạn theo dõi thao tác đang chạy; nếu không, chờ lệnh mà thông báo nêu tên chạy xong, rồi thử lại.
 
 ## 9. Ý nghĩa các mã thoát
 
@@ -219,7 +220,7 @@ Thêm `--json` vào bất kỳ lệnh nào để nhận cùng câu trả lời d
 
 ## 10. Nâng cấp Ingat
 
-Chạy lại `sh install.sh --version <new>` bằng root.
+Đặt `install.sh` và `SHA256SUMS` của bản phát hành mới vào cùng một thư mục, rồi chạy lại `sh install.sh --version <new>` bằng root, với cùng `--root` và `--backups` bạn đã dùng khi cài (trên NAS Synology: `--root /volume1/ingat --backups /volume1/ingat-backups`). Nếu thiếu, trình cài đặt sẽ dùng các thư mục `/srv` và tạo một bản cài thứ hai thay vì nâng cấp.
 
 1. Trước hết nó tải phiên bản mới.
 2. Nếu còn thao tác nào chưa xong, nó dừng lại và giữ nguyên phiên bản bạn đang có (exit 2).

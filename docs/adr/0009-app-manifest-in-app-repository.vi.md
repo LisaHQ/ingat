@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận.
 
-**Nói đơn giản:** Mỗi ứng dụng tự mô tả mình trong `ingat.toml` ở repository riêng của nó, được đọc từ đúng phiên bản đang được cài. Định dạng là TOML, và mọi danh sách từ được phép dùng trong đó (bước, chế độ tác vụ, kiểu kiểm tra, chỗ điền giá trị) đều cố định: thêm một từ mới cần một ADR.
+**Nói đơn giản:** Mỗi ứng dụng tự mô tả mình trong `ingat.toml` ở repository riêng của nó, được đọc từ đúng phiên bản đang được cài. Định dạng là TOML, và mọi danh sách từ được phép dùng trong đó (bước, chế độ tác vụ, kiểu kiểm tra, chỗ điền giá trị) đều cố định: thêm một từ mới cần một ADR và một ứng dụng thật cần đến nó.
 
 ## Bối cảnh
 

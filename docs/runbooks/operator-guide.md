@@ -23,7 +23,7 @@ It covers version 0.1.0 (milestone M1), the commands that exist in code today ([
   - `INGAT_BACKUPS` holds the finished backup copies. Each one is sealed with checksums, so any later change to it is noticed. Default `/srv/ingat-backups`. Only root writes there, and this is the folder your off-site copy is taken from.
   - On a Synology NAS, pass `--root /volume1/ingat --backups /volume1/ingat-backups` when you install. Never accept the `/srv` defaults there.
 - **Ingat can see only these two folders.** It runs inside its own container, which is shown `INGAT_ROOT` and `INGAT_BACKUPS` and nothing else on the machine. So every file path you give it (`init --config`, `validate <repo-dir>`, `validate --instance`, task `--input` files) must be a full path inside one of them, or Ingat cannot find the file. Put such files, and app checkouts, in the inbox: `INGAT_ROOT/inbox/`.
-- **Your app** needs an `ingat.toml` in its repository and images built by its CI ([`MANIFEST_SPEC.md`](../MANIFEST_SPEC.md); the onboarding checklist in [`ARCHITECTURE.md`](../ARCHITECTURE.md#113-generality-rule) §11.3). `ingat validate <repo-dir>` checks a checkout without changing anything, for example one under `INGAT_ROOT/inbox/`.
+- **Your app** needs an `ingat.toml` in its repository and images built by its CI ([`MANIFEST_SPEC.md`](../MANIFEST_SPEC.md); the onboarding checklist in [`ARCHITECTURE.md`](../ARCHITECTURE.md#113-generality-rule) §11.3). `ingat validate <repo-dir>` checks a checkout offline, without changing anything, for example one under `INGAT_ROOT/inbox/`.
 - **Keep Docker on a tested version.** Commands that change anything run only on a Docker Engine version line that this release of Ingat was tested with (the list ships inside Ingat as `tested.json`), and only after the machine check in section 2, which you repeat after every update of the machine. On any other Docker version, `ingat status` says `not a tested combination of this release`: you can still look at everything and take backups that do not stop the app, but every command that changes the app or its data refuses. So stop Docker from updating by itself: on a Linux machine, pin `docker-ce` (`apt-mark hold`), and move to a newer Docker only together with an Ingat release that was tested with it.
 
 ## 2. Install Ingat and check your machine
@@ -32,8 +32,9 @@ Do this once per machine. As root, with the release's `install.sh`, `facts.sh` a
 
 ```sh
 sudo -i
+cd /path/to/downloads   # the folder where you saved the release files
 sh install.sh --version 0.1.0          # default folders; add --root and --backups on a Synology NAS
-ingat host init                        # links Ingat to this Docker; type this machine's name to approve
+ingat host init                        # links Ingat to this Docker; type the name the hostname command prints, to approve
 sh facts.sh > facts.json               # writes down facts about this machine (changes nothing); keep the file with your notes
 ingat selftest --host                  # tests Ingat on this machine: one summary line, then nothing until done (minutes)
 ingat status                           # "gate tier 2 (everything)" in the last lines: Ingat may now make changes here
@@ -44,12 +45,12 @@ On a Synology NAS, give `facts.sh` the same folders: `sh facts.sh --root /volume
 **What you will see.**
 
 - `install.sh` prints the lines of its offline self-check and `installed version …`.
-- `host init` prints the Docker version, storage driver and kernel, then either `gate tier 2: this platform build is certified` (this machine's system and Docker are approved for commands that change things) or the reason why not yet.
+- `host init` prints the Docker version, storage driver and kernel, then, after any `risk:` lines, either `this computer's Docker build is certified, so every command may run (gate tier 2)` or `changes are not allowed on this computer yet (gate tier 2 refuses): …` followed by the reason.
 - `selftest --host` prints one `PASS` line per check and the path of the certificate file it wrote.
 
-**After every update of the operating system, the kernel or Docker**, run `ingat selftest --host` again. Until you do, `status` shows `uncertified` under `attention:`, and the scheduled test restore refuses to run (exit 2). The nightly backups keep running as long as the app can be backed up without stopping (as `fx-lite` can).
+**After every update of the operating system, the kernel or Docker**, run `ingat selftest --host` again. Until you do, `ingat status` shows a `needs your attention (uncertified)` line, and the scheduled test restore refuses to run (exit 2). The nightly backups keep running as long as the app can be backed up without stopping (as `fx-lite` can), but they keep every old backup copy until you run `ingat selftest --host` again.
 
-**No internet on the machine?** `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` loads Ingat from the release file instead of downloading it.
+**No internet on the machine?** `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` loads Ingat from the release file instead of downloading it (on an `aarch64` machine, use `ingat-0.1.0-arm64.tar`). Download the file from the same release page on another computer and copy it into the same folder.
 
 ## 3. Add your app
 
@@ -118,11 +119,11 @@ ingat deploy lite-test v1.2.0
 
 | Task | Command | Notes |
 |---|---|---|
-| See the state | `ingat status lite-test` | Every line that starts with `attention:` is something that needs you; the command then ends with exit code 5. The last line, `next:`, is the command to run. `ingat status` with no name shows every instance on this machine. |
+| See the state | `ingat status lite-test` | Every line that starts with `needs your attention` is something that needs you; the command then ends with exit code 5. The last line, `next:`, is the command to run. `ingat status` with no name shows every instance on this machine. |
 | Deeper checks | `ingat doctor lite-test` | Checks the app's settings against the safety rules, the machine's approval for changes, the secret files, port clashes and the folders. |
 | Containers, logs, past operations, backups | `ingat ps lite-test`, `ingat logs lite-test app --since 1h`, `ingat history lite-test`, `ingat bundles lite-test` | These only read; they never write anything. |
 | Make a backup now | `ingat backup lite-test --reason "before the mail change"` | No approval needed. While it runs, the writers are stopped, unless the app can back up all of its data while running (as `fx-lite` can). |
-| Check a backup copy | `ingat verify lite-test --latest` | Checks that the backup copy is still exactly as it was written (no missing or damaged file) and runs the app's own checks on it. |
+| Check a backup copy | `ingat verify lite-test --latest` | Checks that the backup copy is still exactly as it was written (no missing or damaged file) and runs the app's own checks on it, if the app has any. |
 | Test-restore a backup copy | `ingat verify lite-test --latest --restore-test` | Proves the backup copy can really be restored: Ingat restores it into a separate, temporary copy of the app that cannot reach your live data, checks it, then removes that copy. Your running app is not touched. The backup copy is then marked `restore-tested`. |
 | Remove old backup copies | `ingat prune lite-test --bundles`, then the same with `--apply` | The first command only lists which old copies the keep settings in your instance file (`keep_daily`, `keep_weekly`, `keep_monthly`) would remove; nothing is deleted until you add `--apply`. The nightly `scheduled backup` does this clean-up on its own. |
 | Stop, start, restart | `ingat stop lite-test`, `ingat start lite-test`, `ingat restart lite-test` | Class C: type the name each time. |
@@ -170,7 +171,7 @@ Create these in the machine's scheduler as root, with the full path of the `inga
 
 On a Synology NAS the command is `/volume1/ingat/bin/ingat` and the backups folder is `/volume1/ingat-backups`.
 
-- `scheduled backup` prints one line when it succeeds, and removes old backup copies by the keep settings in your instance file (`keep_daily`, `keep_weekly`, `keep_monthly`).
+- `scheduled backup` prints one line when it succeeds, and removes old backup copies by the keep settings in your instance file (`keep_daily`, `keep_weekly`, `keep_monthly`), except while the machine is uncertified (section 2).
 - `scheduled status` stays silent (exit 0) as long as nothing new needs your attention. It prints, and so the scheduler emails you, only when a problem appears or clears. A problem that lasts for days emails you once, not every hour.
 - If one job starts while another is still running on the same instance, the second one stops with exit 2 and you get an email. Leave enough time between jobs.
 - A scheduled job can never do anything that needs you to type an approval; it refuses instead.
@@ -182,7 +183,7 @@ On a Synology NAS the command is `/volume1/ingat/bin/ingat` and the backups fold
 - The exception is a task that talks to you in the terminal (`bootstrap-config`, `bootstrap-new-code`). It runs from your window, so losing the window may leave it half done while its container keeps running. After a drop, run your next command; if it answers `task-running`, run the exact `docker stop` command it prints, then `ingat status lite-test`.
 - While you watch an operation, Ctrl-C asks `[d]etach or [c]ancel?`. Detach only stops the watching, never the operation. In a terminal task, Ctrl-C asks the task to stop.
 
-**`status` shows `attention: open-operation: operation <n> (<kind>) is interrupted` (or `paused`), exit 5.** An operation started and has not finished: it was cut off (interrupted) or it is waiting for you (paused). You have two choices, and the `next:` line of `status` names the right one:
+**`status` shows `needs your attention (open-operation): operation <n> (<kind>) was interrupted before it finished` (or `… is paused and waiting for you`), exit 5.** An operation started and has not finished: it was cut off (interrupted) or it is waiting for you (paused). You have two choices, and the `next:` line of `status` names the right one:
 
 - `ingat resume lite-test` continues from the first step that did not finish;
 - `ingat abandon lite-test` undoes what can be undone and closes the operation.
@@ -199,7 +200,7 @@ If `ingat attach` finds that the helper is gone, it ends with exit 4 and the sam
 
 **`not a tested combination`.** See section 1: pin Docker to a tested version, or wait for an Ingat release that tests the new one.
 
-**`… lock is busy: op …` or `container ingat-exec-lite-test is still present`, exit 2.** Another command is still working on this instance (or, for `init` and `selftest --host`, on this machine), and only one may work at a time. Nothing was changed. `ingat attach lite-test` lets you watch the running operation; otherwise wait for the command the message names to finish, then try again.
+**`Another command is still running and holds the lock …` (code `lock-busy`) or `container ingat-exec-lite-test is still present`, exit 2.** Another command is still working on this instance (or, for `init` and `selftest --host`, on this machine), and only one may work at a time. Nothing was changed. `ingat attach lite-test` lets you watch the running operation; otherwise wait for the command the message names to finish, then try again.
 
 ## 9. What the exit numbers mean
 
@@ -219,7 +220,7 @@ Add `--json` to any command to get the same answer as one block of machine-reada
 
 ## 10. Upgrade Ingat
 
-Run `sh install.sh --version <new>` again as root.
+Put the new release's `install.sh` and `SHA256SUMS` in one folder, then run `sh install.sh --version <new>` again as root, with the same `--root` and `--backups` you installed with (on a Synology NAS: `--root /volume1/ingat --backups /volume1/ingat-backups`). Without them the installer uses the `/srv` folders and makes a second install instead of an upgrade.
 
 1. It first downloads the new version.
 2. If any operation is still unfinished, it stops and leaves the version you have untouched (exit 2).

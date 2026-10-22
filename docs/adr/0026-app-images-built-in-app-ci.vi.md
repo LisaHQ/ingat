@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận (quyết định của chủ sở hữu OD-11, phương án (b), 2026-10-15).
 
-**Nói đơn giản:** Ingat không bao giờ build image của ứng dụng. CI của từng ứng dụng build và công bố chúng; Ingat kéo chúng về, ghim chúng theo ID và digest (mã băm nhận dạng image), và chỉ nhận một image khi nhãn của nó ghi đúng commit đang được cài.
+**Nói đơn giản:** Ingat không bao giờ build image của ứng dụng. CI của mỗi ứng dụng build và công bố chúng; Ingat tải chúng về, ghim chúng theo ID và digest, và chỉ nhận một image do chính ứng dụng build khi nhãn của nó ghi đúng commit đang được cài.
 
 ## Bối cảnh
 

@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận (chỉ đạo của chủ sở hữu, 2026-10-14).
 
-**Nói đơn giản:** Ingat là một dự án mới, riêng biệt, được viết từ đầu. Nó không dùng chung thứ gì với công cụ nội bộ cũ mà nó thay thế, và không đọc được dữ liệu của công cụ đó; các ứng dụng mà công cụ đó từng chạy được cài lại từ đầu.
+**Nói đơn giản:** Ingat là một dự án mới, riêng biệt, được viết lại từ đầu. Nó không dùng chung gì với công cụ nội bộ cũ mà nó thay thế và không đọc được dữ liệu của công cụ đó; các ứng dụng đang có trên máy hiện nay được cài lại từ đầu, không chuyển dữ liệu cũ sang.
 
 ## Bối cảnh
 

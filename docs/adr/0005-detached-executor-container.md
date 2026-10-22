@@ -2,7 +2,7 @@
 
 **Status:** Accepted.
 
-**In plain words:** Every change to Docker runs in a separate helper container that keeps going on its own; your terminal only follows along. A dropped SSH connection or a closed window can therefore never stop a data update half-way.
+**In plain words:** Almost every change to Docker runs in a separate helper container that keeps going on its own; your terminal only follows along. A dropped SSH connection or a closed window therefore cannot stop a backup, an update or a data migration half-way. The exception is a task that talks to you in the terminal: it runs from your own window.
 
 ## Context
 

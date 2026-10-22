@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận; sửa đổi ngày 2026-10-14, trước khi viết bất kỳ dòng mã nào, để hỗ trợ máy mà không phụ thuộc nền tảng ([ADR-0025](0025-host-baseline.vi.md)): chứng nhận máy (host certification) là bắt buộc trên mọi máy, không chỉ trên các bản build của hãng (vendor), và được so khớp với bản build Engine mà `docker version` báo, không phải với bản build của gói Engine.
 
-**Nói đơn giản:** Những lệnh nào được chạy tùy thuộc vào máy. Lệnh chỉ đọc chạy ở mọi nơi. Các lần sao lưu để ứng dụng tiếp tục chạy cũng chạy được trên một Docker chưa kiểm thử. Mọi thứ khác chỉ chạy trên một dòng Docker mà CI đã kiểm thử, và chỉ sau khi đúng hệ thống và đúng bản build Docker của máy đã qua `selftest --host`. Không có lối vượt.
+**Nói đơn giản:** Những lệnh nào được chạy tùy vào máy. Lệnh chỉ đọc chạy ở mọi nơi. Các lần sao lưu để ứng dụng tiếp tục chạy, và việc kiểm tra chúng, cũng chạy được trên một Docker chưa kiểm thử từ bản 24.0 trở lên, kèm một cảnh báo được ghi lại. Mọi thứ khác chỉ chạy trên một dòng Docker mà CI đã kiểm thử, và chỉ sau khi đúng bản build hệ thống và Docker của máy đã đạt `selftest --host`. Không có cách nào vượt qua.
 
 ## Bối cảnh
 

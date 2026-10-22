@@ -2,7 +2,7 @@
 
 **Status:** Accepted.
 
-**In plain words:** Ingat checks that an app is ready in three ways (Docker's health status, a command inside the container, an HTTP request), and each check must stay good for a set time. A database counts as ready only after its own readiness check passes, never because its container says "healthy".
+**In plain words:** Ingat checks that an app is ready in three ways (Docker's health status, a command inside the container, an HTTP request), and a check can be required to stay good for a set time. Each time a database starts, Ingat waits until the readiness check the app declares for it passes, not just until its container is running; Docker's health status alone was rejected as the only kind of check.
 
 ## Context
 

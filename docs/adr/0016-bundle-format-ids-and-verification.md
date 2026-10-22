@@ -2,7 +2,7 @@
 
 **Status:** Accepted.
 
-**In plain words:** A backup copy (bundle) is a folder with a checksum file that lists every file; its identity is the hash of that checksum file. Its name follows the app's own naming pattern. Two check levels, "verified" and "restore-tested", are recorded outside the bundle.
+**In plain words:** A backup copy (bundle) is a folder with a checksum file that lists every file; its fingerprint is the hash of that checksum file, recorded in a list only root can open, so any change is caught. Its id, its name, follows the app's own naming pattern. Two check levels, "verified" and "restore-tested", are recorded outside the bundle.
 
 ## Context
 

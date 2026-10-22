@@ -14,7 +14,7 @@
 | [§4 Execution model](#4-execution-model) | Why changes run in a separate helper container, terminal tasks, cancelling, and cleaning up leftovers after a crash |
 | [§5 Modules and layering](#5-modules-and-layering) | How the code is split into layers, the size budgets, and the tests that guard the split |
 | [§6 Compose invocation](#6-compose-invocation) | How Ingat calls Docker Compose: always on the app's own files plus one generated file |
-| [§7 On-disk layout, records and locks](#7-on-disk-layout-records-and-locks) | Which files Ingat keeps where, the rules for writing them, and the locks that let only one command work on an app at a time |
+| [§7 On-disk layout, records and locks](#7-on-disk-layout-records-and-locks) | Which files Ingat keeps where, the rules for writing them, and the locks that let only one operation run on an app at a time (read-only commands such as `status` take no lock) |
 | [§8 Templates](#8-templates) | The fixed set of placeholders an app manifest may use |
 | [§9 Security and trust model](#9-security-and-trust-model) | What Ingat trusts, what it defends against, the Docker socket, secrets, and the app settings it refuses |
 | [§10 Testing and certification](#10-testing-and-certification) | The test levels, the test apps, the required test suites, and how a machine gets certified |

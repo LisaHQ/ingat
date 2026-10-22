@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận; tài khoản, không gian tên và chế độ công khai do chủ sở hữu quyết định ngày 2026-10-14 (quyết định của chủ sở hữu OD-2, OD-3); tên sản phẩm Ingat được chủ sở hữu xác nhận ngày 2026-10-14 (quyết định của chủ sở hữu OD-1); các thư mục gốc mặc định được đổi thành dạng chung (generic) ngay trong ngày đó, trước khi viết bất kỳ dòng mã nào ([ADR-0025](0025-host-baseline.vi.md)).
 
-**Nói đơn giản:** Các tên được chốt một lần: Ingat, lệnh `ingat`, tổ chức LisaHQ, tên nhãn và tên image, và các thư mục mặc định. Trong mã, chúng chỉ nằm trong một tệp duy nhất, vì nhãn Docker không đổi tên được về sau.
+**Nói đơn giản:** Các tên được chốt một lần: Ingat, lệnh `ingat`, tổ chức LisaHQ, tên nhãn và tên image, và các thư mục mặc định. Trong mã, chúng chỉ nằm trong một tệp tên và mẫu script khởi động, vì nhãn Docker không đổi tên được về sau.
 
 ## Bối cảnh
 

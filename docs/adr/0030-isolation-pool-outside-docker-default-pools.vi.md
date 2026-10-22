@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận (2026-10-16).
 
-**Nói đơn giản:** Các bản sao để thử lấy mạng riêng của chúng từ `10.250.0.0/20`, một dải mà Docker không dùng theo mặc định, nên một máy bận rộn không thể hết địa chỉ cho các lần thử khôi phục.
+**Nói đơn giản:** Các lần thử khôi phục (và, từ M2, bước dựng tạm khi khôi phục) lấy mạng riêng từ `10.250.0.0/20`, một dải mà Docker không dùng theo mặc định, nên các mạng của chính Docker không còn chiếm hết dải này; nếu không còn ô nào trong 16 ô trống, Ingat dừng lại với một thông báo rõ ràng.
 
 ## Bối cảnh
 

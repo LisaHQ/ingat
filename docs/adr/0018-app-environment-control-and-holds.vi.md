@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận.
 
-**Nói đơn giản:** Một ứng dụng khai báo mọi thiết lập mà nó nhận. Có thiết lập chỉ được đổi khi có mức duyệt cao nhất, có thiết lập bị cấm, và có thiết lập do Ingat tự điền. Các bản sao để thử được gắn chốt chặn (holds): những thiết lập ngăn chúng gửi thư thật hoặc kết nối ra bên ngoài.
+**Nói đơn giản:** Một ứng dụng khai báo mọi thiết lập mà nó nhận. Có thiết lập chỉ được đổi với mức duyệt cao nhất, có thiết lập bị cấm, và có thiết lập do Ingat tự điền. Các lần chạy cách ly (thử khôi phục, và bước dựng tạm khi khôi phục thật) được gắn chốt chặn (holds): những thiết lập ngăn chúng gửi thư thật và giúp chúng khởi động được khi không có kết nối ra ngoài.
 
 ## Bối cảnh
 

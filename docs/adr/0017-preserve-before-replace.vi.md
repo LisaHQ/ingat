@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận, chờ quyết định của chủ sở hữu OD-4.
 
-**Nói đơn giản:** Mỗi lần cập nhật làm thay đổi chương trình của một phần ghi dữ liệu thì trước hết dừng các phần đó, tạo một bản sao lưu và kiểm tra nó; chỉ sau đó bước cập nhật dữ liệu mới chạy. Việc này làm ứng dụng ngừng vài phút cho mỗi bản phát hành, và chủ sở hữu quyết định điều đó có chấp nhận được không (OD-4).
+**Nói đơn giản:** Mọi lần cập nhật đổi image của một phần ghi dữ liệu hay của một dịch vụ dữ liệu (hoặc bất kỳ image nào của một ứng dụng tự cập nhật dữ liệu khi khởi động) đều dừng các phần ghi dữ liệu trước, tạo một bản sao lưu và kiểm tra nó; chỉ sau đó bước cập nhật dữ liệu mới chạy. Vì vậy mỗi bản phát hành như thế làm các phần ghi dữ liệu dừng một lúc (thời gian này chưa được đo), và chủ sở hữu quyết định chi phí đó có chấp nhận được không (OD-4).
 
 ## Bối cảnh
 

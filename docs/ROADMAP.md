@@ -2,7 +2,7 @@
 
 **English** · [Tiếng Việt](ROADMAP.vi.md)
 
-> **In plain words.** The order in which Ingat is built: six milestones (M0-M5), what each one delivers, how big it is expected to be, and the evidence that closes it (its exit gate). It also lists the guardrails against growing too big, the work that waits for a trigger, and the additions the owner decided on 2026-10-19. Where things stand on 2026-10-22: M0 and M1 are in progress; CI passes on all three real-Docker lanes; release `v0.1.0` exists as a draft; the first host passed `selftest --host`; the M1 exit gate still needs the first real app (`lite-test`) on that host. M2 comes next.
+> **In plain words.** The order in which Ingat is built: six milestones (M0-M5), what each one delivers, how big it is expected to be, and the evidence that closes it (its exit gate). It also lists the guardrails against growing too big, the work that waits for a trigger, and the additions the owner decided on 2026-10-19. Where things stand on 2026-10-22: M0 and M1 are in progress; CI passes on all three real-Docker lanes; release `v0.1.0` exists as a draft; the first host passed `selftest --host`; the M1 exit gate still needs the manual checklist of that host's certification and the first real app (`lite-test`) on that host. M2 comes next.
 
 Status: **Decided** plan. M0 and M1 are in progress: their code exists and no exit gate has passed (status lines under each). Durations assume one owner working with AI coding agents and are estimates, not commitments. Sizes are runtime lines (Python plus shell); tests are planned at roughly 1:1. Evidence for every exit gate is a CI run at a commit SHA or a committed host certification file, judged with `PASS`, `FAIL` or `BLOCKED` only.
 

@@ -2,7 +2,7 @@
 
 **Status:** Accepted.
 
-**In plain words:** An app declares every setting it accepts. Some may only change with the strongest approval, some are forbidden, and some Ingat fills in itself. Test copies get holds: settings that stop them from sending real mail or reaching the outside.
+**In plain words:** An app declares every setting it accepts. Some may only change with the strongest approval, some are forbidden, and some Ingat fills in itself. Isolated runs (test restores, and the staging step of a real restore) get holds: settings that stop them from sending real mail and let them start without outside access.
 
 ## Context
 

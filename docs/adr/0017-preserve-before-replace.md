@@ -2,7 +2,7 @@
 
 **Status:** Accepted, pending owner decision OD-4.
 
-**In plain words:** Any update that changes the program of a part that writes data first stops those parts, takes a backup copy and checks it; only then does the data update run. This costs some minutes of downtime per release, and the owner decides whether that is acceptable (OD-4).
+**In plain words:** Any update that changes the image of a part that writes data or of a data service (or any image of an app that updates its data when it starts) first stops the writers, takes a backup copy and checks it; only then does the data update run. Every such release therefore stops the writers for a while (the time is not measured yet), and the owner decides whether that cost is acceptable (OD-4).
 
 ## Context
 

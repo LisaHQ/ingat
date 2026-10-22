@@ -2,7 +2,7 @@
 
 **Status:** Accepted, pending owner decision OD-10 (confirmation of the agent boundary).
 
-**In plain words:** Every command has an approval class. A reads only. B only adds things such as backups, and may run unattended. C changes something and needs the instance name typed, or a plan the owner approved. D can lose data and needs a typed challenge on a real terminal, never a saved plan. AI assistants never get class D.
+**In plain words:** Every command has an approval class. A reads only. B only adds things such as backups, or removes old backups that your keep rules allow, and may run unattended. C changes something and needs the instance name typed, or a plan the owner approved. D can lose data and needs a typed challenge on a real terminal, never a saved plan. Class D is meant for the owner alone: Ingat cannot tell an AI assistant from a person, so only the assistants' own tool rules keep them out of it (owner decision OD-10).
 
 ## Context
 

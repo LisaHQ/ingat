@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận.
 
-**Nói đơn giản:** Ingat kiểm tra một ứng dụng đã sẵn sàng hay chưa theo ba cách (trạng thái health của Docker, một lệnh chạy bên trong container, một yêu cầu HTTP), và mỗi phép kiểm tra phải giữ kết quả tốt trong một khoảng thời gian định sẵn. Một cơ sở dữ liệu chỉ được coi là sẵn sàng sau khi phép kiểm tra sẵn sàng của chính nó qua, không bao giờ chỉ vì container của nó báo "healthy".
+**Nói đơn giản:** Ingat kiểm tra một ứng dụng đã sẵn sàng theo ba cách (trạng thái health của Docker, một lệnh chạy bên trong container, một yêu cầu HTTP), và một phép kiểm tra có thể được yêu cầu giữ kết quả tốt trong một khoảng thời gian định sẵn. Mỗi lần một cơ sở dữ liệu khởi động, Ingat chờ đến khi phép kiểm tra sẵn sàng mà ứng dụng khai báo cho nó đạt, chứ không chỉ chờ container của nó chạy; chỉ dựa vào trạng thái health của Docker đã bị loại.
 
 ## Bối cảnh
 

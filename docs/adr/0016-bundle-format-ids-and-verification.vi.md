@@ -4,7 +4,7 @@
 
 **Trạng thái:** Đã chấp nhận.
 
-**Nói đơn giản:** Một bản sao lưu (bundle) là một thư mục có một tệp mã kiểm tra liệt kê mọi tệp; định danh của nó là mã băm của tệp mã kiểm tra đó. Tên của nó theo mẫu đặt tên riêng của ứng dụng. Hai mức kiểm tra, "verified" (đã kiểm tra) và "restore-tested" (đã thử khôi phục), được ghi lại bên ngoài bản sao lưu.
+**Nói đơn giản:** Một bản sao lưu (bundle) là một thư mục có một tệp mã kiểm tra liệt kê mọi tệp; dấu vân tay của nó là mã băm của tệp mã kiểm tra đó, được ghi trong một danh sách chỉ root mở được, nên mọi thay đổi đều bị phát hiện. Mã định danh của nó, tức tên của nó, theo mẫu đặt tên riêng của ứng dụng. Hai mức kiểm tra, "verified" và "restore-tested", được ghi lại bên ngoài bản sao lưu.
 
 ## Bối cảnh
 
