@@ -1,39 +1,59 @@
-# Hướng dẫn vận hành Ingat (M1)
+# Hướng dẫn vận hành Ingat
 
-Trạng thái: bản dịch của [`operator-guide.md`](operator-guide.md), bản tiếng Anh là bản chuẩn. Mô tả bộ lệnh M1 như đang có trong mã ([`README.md`](../../README.md), mục "Commands (M1)"). Restore, duyệt class D, `secret set` và cơ chế `plan`/`apply` cho agent sẽ có ở M2 ([`ROADMAP.md`](../ROADMAP.md)); hướng dẫn nói rõ ở những chỗ liên quan. Lý do của từng quy tắc nằm trong [`LIFECYCLE.md`](../LIFECYCLE.md) và [`ARCHITECTURE.md`](../ARCHITECTURE.md); tài liệu này chỉ nói gõ gì và sẽ thấy gì.
+[English](operator-guide.md) · **Tiếng Việt** (bản dịch; bản tiếng Anh là bản chuẩn)
 
-Mọi lệnh chạy bằng tài khoản quản trị của máy (root) qua một script khởi động nhỏ (`/srv/ingat/bin/ingat` với các thư mục mặc định; `/volume1/ingat/bin/ingat` theo hồ sơ DSM, dùng trên NAS Synology). Dưới đây `ingat` là đường dẫn đó, và `lite-test` là một instance ví dụ (một bản cài của một app) của app mẫu `fx-lite`.
+Hướng dẫn này dành cho người chạy Ingat trên một máy: bạn cài nó, thêm các ứng dụng của mình, và giữ cho chúng luôn được sao lưu và cập nhật. Hướng dẫn nói bạn cần gõ gì và sẽ thấy gì. Lý do đằng sau từng quy tắc nằm trong [`LIFECYCLE.vi.md`](../LIFECYCLE.vi.md) và [`ARCHITECTURE.vi.md`](../ARCHITECTURE.vi.md).
+
+Hướng dẫn áp dụng cho phiên bản 0.1.0 (mốc M1), tức các lệnh đã có trong mã hôm nay ([README](../../README.vi.md#dùng-hằng-ngày)). Khôi phục, việc duyệt các lệnh có thể làm mất dữ liệu (lớp D), `secret set` và việc giao một kế hoạch cho trợ lý AI (`plan`/`apply`) sẽ có ở M2 ([`ROADMAP.vi.md`](../ROADMAP.vi.md)); hướng dẫn nói rõ ở những chỗ liên quan.
+
+**Cách đọc các ví dụ.** Chạy mọi lệnh bằng tài khoản quản trị của máy, root. `ingat` là lệnh `ingat` mà trình cài đặt tạo ra: `/srv/ingat/bin/ingat` với các thư mục mặc định, hoặc `/volume1/ingat/bin/ingat` trên NAS Synology. `lite-test` là một bản cài ví dụ (một bản cài của một ứng dụng, instance) của ứng dụng mẫu `fx-lite`.
+
+**Vài từ bạn sẽ gặp:**
+
+- **bản cài** (instance): một bản cài của một ứng dụng, có tên riêng, ví dụ `lite-test`.
+- **các phần ghi dữ liệu** (writers): những phần của ứng dụng thay đổi dữ liệu của bạn.
+- **bản sao lưu**: một bản sao lưu đã niêm phong của một bản cài (bản ghi của Ingat gọi nó là *bundle*).
+- **`INGAT_ROOT`:** thư mục riêng của Ingat. **`INGAT_BACKUPS`:** thư mục chứa các bản sao lưu.
 
 ## 1. Trước khi bắt đầu
 
-- **Host:** Docker Engine Linux 24.0 trở lên có plugin `docker compose`, truy cập được bằng root qua socket cục bộ; SSH với `sudo -i`; một bộ lập lịch gửi mail khi job lỗi (systemd timer, cron, hoặc DSM Task Scheduler); một công cụ sao chép backup ra ngoài host (restic, borg, rsync, hoặc Hyper Backup trên DSM). Chi tiết: [`ARCHITECTURE.md`](../ARCHITECTURE.md) §11.4.
-- **Hai thư mục:** `INGAT_ROOT` giữ các bản ghi của tool và dữ liệu thật của những app lưu dữ liệu trong thư mục thường (mặc định `/srv/ingat`; phải thuộc root với quyền `0700`, tức chỉ root mở được, và nằm trên ổ đĩa trong máy này, không bao giờ là ổ mạng). `INGAT_BACKUPS` giữ các bản backup đã hoàn tất, mỗi bản được niêm phong bằng mã kiểm tra để mọi thay đổi về sau đều bị phát hiện (mặc định `/srv/ingat-backups`; chỉ root ghi vào đó, và đây là thư mục để bạn chép ra nơi khác). Trên DSM truyền `--root /volume1/ingat --backups /volume1/ingat-backups` lúc cài; không bao giờ dùng mặc định `/srv` ở đó.
-- **Tool chỉ nhìn thấy hai thư mục này.** Nó chạy trong một hộp riêng (container) chỉ được cho thấy `INGAT_ROOT` và `INGAT_BACKUPS`, không thấy gì khác trên máy. Vì vậy mọi đường dẫn tệp bạn đưa cho nó (`init --config`, `validate <thư-mục-repo>`, `validate --instance`, file `--input` của task) phải là đường dẫn đầy đủ bắt đầu từ một trong hai thư mục đó, nếu không tool sẽ không tìm thấy tệp; `INGAT_ROOT/inbox/` là chỗ để các tệp và mã nguồn như vậy.
-- **App của bạn:** cần `ingat.toml` trong repository và image build bởi CI ([`MANIFEST_SPEC.md`](../MANIFEST_SPEC.md); checklist onboarding trong [`ARCHITECTURE.md`](../ARCHITECTURE.md) §11.3). `ingat validate <thư-mục-repo>` kiểm tra một checkout offline (ví dụ một checkout dưới `INGAT_ROOT/inbox/`).
-- **Phiên bản Docker đã kiểm thử:** lệnh có thay đổi chỉ chạy trên dòng phiên bản Docker Engine mà bản phát hành này của tool đã được kiểm thử cùng (danh sách nằm sẵn trong tool, tệp `tested.json`), và chỉ sau lần kiểm tra máy ở mục 2 (chạy lại sau mỗi lần cập nhật máy). Trên phiên bản Docker khác, `ingat status` báo `not a tested combination of this release`: bạn vẫn xem được trạng thái và vẫn backup được theo cách không dừng app, nhưng mọi lệnh có thay đổi app hay dữ liệu đều từ chối. Vì vậy đừng để Docker tự cập nhật: trên host Linux hãy ghim `docker-ce` (`apt-mark hold`), và chỉ lên Docker mới cùng với một bản phát hành tool đã được kiểm thử với nó.
+- **Máy.** Bạn cần một Docker Engine Linux 24.0 trở lên có plugin `docker compose`, truy cập được bằng root qua socket cục bộ; SSH với `sudo -i`; một bộ lập lịch gửi email cho bạn khi một việc bị lỗi (systemd timer, cron, hoặc Task Scheduler trên NAS Synology); và một công cụ chép các bản sao lưu sang nơi khác (restic, borg, rsync, hoặc Hyper Backup trên NAS Synology). Chi tiết: [`ARCHITECTURE.vi.md`](../ARCHITECTURE.vi.md#114-yêu-cầu-tối-thiểu-cho-máy) §11.4.
+- **Hai thư mục.**
+  - `INGAT_ROOT` giữ các bản ghi của Ingat và dữ liệu đang dùng của những ứng dụng lưu dữ liệu trong thư mục thường. Mặc định `/srv/ingat`. Nó phải thuộc root với quyền `0700`, tức chỉ root mở được, và phải nằm trên ổ đĩa bên trong máy này, không bao giờ trên ổ mạng.
+  - `INGAT_BACKUPS` giữ các bản sao lưu đã hoàn tất. Mỗi bản được niêm phong bằng mã kiểm tra, nên mọi thay đổi về sau trên nó đều bị phát hiện. Mặc định `/srv/ingat-backups`. Chỉ root ghi vào đó, và đây là thư mục mà bản sao ở nơi khác của bạn được chép từ đó ra.
+  - Trên NAS Synology, hãy truyền `--root /volume1/ingat --backups /volume1/ingat-backups` khi cài. Ở đó không bao giờ dùng mặc định `/srv`.
+- **Ingat chỉ nhìn thấy hai thư mục này.** Nó chạy trong container riêng của nó, chỉ được cho thấy `INGAT_ROOT` và `INGAT_BACKUPS`, không thấy gì khác trên máy. Vì vậy mọi đường dẫn tệp bạn đưa cho nó (`init --config`, `validate <repo-dir>`, `validate --instance`, các tệp `--input` của tác vụ) phải là đường dẫn đầy đủ nằm trong một trong hai thư mục đó, nếu không Ingat sẽ không tìm thấy tệp. Hãy đặt những tệp như vậy, và mã nguồn ứng dụng đã tải về, vào hộp thư đến (inbox): `INGAT_ROOT/inbox/`.
+- **Ứng dụng của bạn** cần có `ingat.toml` trong repository và các image do CI của nó build ([`MANIFEST_SPEC.vi.md`](../MANIFEST_SPEC.vi.md); danh sách việc khi đưa ứng dụng vào trong [`ARCHITECTURE.vi.md`](../ARCHITECTURE.vi.md#113-quy-tắc-tổng-quát) §11.3). `ingat validate <repo-dir>` kiểm tra một bản mã nguồn đã tải về mà không thay đổi gì, ví dụ một bản nằm dưới `INGAT_ROOT/inbox/`.
+- **Giữ Docker ở một phiên bản đã kiểm thử.** Các lệnh có thay đổi chỉ chạy trên một dòng phiên bản Docker Engine mà bản phát hành Ingat này đã được kiểm thử cùng (danh sách nằm sẵn trong Ingat, tệp `tested.json`), và chỉ sau lần kiểm tra máy ở mục 2, việc bạn làm lại sau mỗi lần cập nhật máy. Trên một phiên bản Docker khác, `ingat status` báo `not a tested combination of this release`: bạn vẫn xem được mọi thứ và vẫn sao lưu được theo cách không dừng ứng dụng, nhưng mọi lệnh thay đổi ứng dụng hay dữ liệu đều từ chối. Vì vậy đừng để Docker tự cập nhật: trên máy Linux hãy ghim `docker-ce` (`apt-mark hold`), và chỉ lên Docker mới cùng với một bản phát hành Ingat đã được kiểm thử với nó.
 
-## 2. Cài đặt và chứng nhận host (một lần)
+## 2. Cài Ingat và kiểm tra máy
 
-Bằng root, với `install.sh` và `SHA256SUMS` của bản phát hành trong cùng thư mục:
+Làm một lần cho mỗi máy. Bằng root, với `install.sh`, `facts.sh` và `SHA256SUMS` của bản phát hành trong cùng một thư mục:
 
 ```sh
 sudo -i
-sh install.sh --version 0.1.0          # root mặc định; thêm --root và --backups cho hồ sơ DSM
-ingat host init                        # gắn root với engine này; gõ tên host để duyệt
-sh facts.sh > facts.json               # thu thập thông tin host, chỉ đọc; giữ file cùng ghi chú của bạn
-ingat selftest --host                  # chứng nhận bản build nền tảng này: in một dòng tóm tắt, rồi không in gì tới khi xong (vài phút)
-ingat status                           # "gate tier 2" ở những dòng cuối nghĩa là máy này đã được duyệt cho các lệnh có thay đổi
+sh install.sh --version 0.1.0          # thư mục mặc định; thêm --root và --backups trên NAS Synology
+ingat host init                        # gắn Ingat với Docker này; gõ tên máy để duyệt
+sh facts.sh > facts.json               # ghi lại thông tin về máy (không thay đổi gì); giữ tệp cùng ghi chú của bạn
+ingat selftest --host                  # kiểm thử Ingat trên máy này: in một dòng tóm tắt, rồi im lặng tới khi xong (vài phút)
+ingat status                           # "gate tier 2 (everything)" ở những dòng cuối: từ giờ Ingat được phép thay đổi ở máy này
 ```
 
-Theo hồ sơ DSM hãy truyền thư mục gốc cho cả `facts.sh`: `sh facts.sh --root /volume1/ingat --backups /volume1/ingat-backups > facts.json`.
+Trên NAS Synology, đưa cho `facts.sh` cùng hai thư mục đó: `sh facts.sh --root /volume1/ingat --backups /volume1/ingat-backups > facts.json`.
 
-Bạn sẽ thấy: `install.sh` in các dòng tự kiểm tra offline và `installed version …`; `host init` in phiên bản Docker, storage driver và kernel, rồi hoặc `gate tier 2: this platform build is certified` (phần mềm của máy này đã được duyệt cho các lệnh có thay đổi) hoặc lý do chưa được; `selftest --host` in một dòng `PASS` cho mỗi kiểm tra và đường dẫn tệp chứng nhận nó đã ghi. Chạy lại `ingat selftest --host` sau mỗi lần cập nhật hệ điều hành, kernel hay Docker: chừng nào chưa chạy, `status` báo `uncertified` dưới `attention:` và thử restore theo lịch từ chối chạy (exit 2), còn backup hằng đêm vẫn chạy chừng nào app backup được mà không cần dừng (như `fx-lite`).
+**Bạn sẽ thấy gì.**
 
-Cài offline: `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` nạp tarball thay vì pull.
+- `install.sh` in các dòng tự kiểm tra offline và `installed version …`.
+- `host init` in phiên bản Docker, storage driver và kernel, rồi hoặc `gate tier 2: this platform build is certified` (hệ thống và Docker của máy này đã được duyệt cho các lệnh có thay đổi), hoặc lý do vì sao chưa được.
+- `selftest --host` in một dòng `PASS` cho mỗi bước kiểm tra và đường dẫn của tệp chứng nhận nó đã ghi.
 
-## 3. Đăng ký một instance
+**Sau mỗi lần cập nhật hệ điều hành, kernel hoặc Docker**, hãy chạy lại `ingat selftest --host`. Chừng nào bạn chưa chạy, `status` báo `uncertified` dưới `attention:`, và lần thử khôi phục theo lịch từ chối chạy (exit 2). Các bản sao lưu hằng đêm vẫn chạy chừng nào ứng dụng sao lưu được mà không cần dừng (như `fx-lite`).
 
-1. Viết file instance vào inbox, ví dụ `/srv/ingat/inbox/lite-test.toml` (schema và ví dụ đầy đủ: [`MANIFEST_SPEC.md`](../MANIFEST_SPEC.md) §6 và §12). Tối thiểu cho `fx-lite`:
+**Máy không có internet?** `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` nạp Ingat từ tệp phát hành thay vì tải về.
+
+## 3. Thêm ứng dụng của bạn
+
+1. **Viết tệp bản cài** vào inbox, ví dụ `/srv/ingat/inbox/lite-test.toml`. Mọi khóa và một ví dụ đầy đủ: [`MANIFEST_SPEC.vi.md`](../MANIFEST_SPEC.vi.md) §6 và §12. Tối thiểu cho `fx-lite`:
 
    ```toml
    instance = 1
@@ -44,11 +64,11 @@ Cài offline: `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` n
 
    [source]
    repo = "ssh://git@github.com/<owner>/<app>.git"
-   key = "fx-lite"                      # /srv/ingat/keys/fx-lite/{id_ed25519,known_hosts}, mode 0600
+   key = "fx-lite"                      # /srv/ingat/keys/fx-lite/{id_ed25519,known_hosts}, quyền 0600
 
    [params]
-   FXLITE_IMAGE = "ghcr.io/<owner>/fx-lite@sha256:<digest>"   # image do CI build của bản phát hành; fx-lite bắt buộc có
-   FXLITE_PORT = "20090"                # không khai báo khóa này thì port được cấp trong dải 20000-29999
+   FXLITE_IMAGE = "ghcr.io/<owner>/fx-lite@sha256:<digest>"   # image do CI build cho bản phát hành; fx-lite bắt buộc có
+   FXLITE_PORT = "20090"                # bỏ khóa này đi thì một cổng sẽ được chọn trong dải 20000-29999
 
    [app_env]
    ALLOWED_ORIGINS = "https://lite-test.example.internal"
@@ -61,81 +81,155 @@ Cài offline: `sh install.sh --version 0.1.0 --from-tar ingat-0.1.0-amd64.tar` n
    keep_weekly = 4
    ```
 
-2. Với repository `ssh://`, đặt deploy key chỉ đọc và `known_hosts` đã ghim dưới `INGAT_ROOT/keys/<key>/`.
-3. Tùy chọn: `ingat validate /srv/ingat/inbox/<checkout> --instance /srv/ingat/inbox/lite-test.toml`.
-4. `ingat init lite-test --config /srv/ingat/inbox/lite-test.toml --ref v1.2.0`, rồi gõ `lite-test` để duyệt. Lệnh tải mã nguồn của app ở phiên bản `v1.2.0`, đọc tệp `ingat.toml` của app trong đó, chọn cổng mạng nào bạn chưa khai báo, tự tạo các mật khẩu mà app cho phép tự sinh (bạn không bao giờ thấy hay gõ chúng; những mật khẩu bạn phải tự cung cấp nằm ở bước 5), và in `next: ingat deploy lite-test v1.2.0`.
-5. Secret mà manifest khai báo dạng env-file (ví dụ thông tin đăng nhập mail) sẽ được đặt bằng `ingat secret set` từ M2. Ở M1, sau `init` (lệnh này tạo `secrets/env/` với mode 0700) và trước lần deploy đầu, đặt từng giá trị thành một file `INGAT_ROOT/instances/lite-test/secrets/env/<KEY>` (mode 0600, không có xuống dòng ở cuối); chạy lại `init` sau đó vẫn giữ nguyên file đã có.
+2. **Với repository truy cập qua `ssh://`**, đặt deploy key chỉ đọc của nó và một tệp `known_hosts` đã ghim vào `INGAT_ROOT/keys/<key>/`.
+3. **Kiểm tra (không bắt buộc):** `ingat validate /srv/ingat/inbox/<checkout> --instance /srv/ingat/inbox/lite-test.toml`.
+4. **Đăng ký bản cài:** `ingat init lite-test --config /srv/ingat/inbox/lite-test.toml --ref v1.2.0`, rồi gõ `lite-test` để duyệt. Ingat tải mã nguồn của ứng dụng ở phiên bản `v1.2.0`, đọc tệp `ingat.toml` của ứng dụng trong đó, chọn cổng mạng nào bạn chưa khai báo, và tự tạo những mật khẩu mà ứng dụng cho phép tự sinh (bạn không bao giờ thấy hay gõ chúng; những mật khẩu bạn phải tự cung cấp nằm ở bước 5). Lệnh kết thúc với `next: ingat deploy lite-test v1.2.0`.
+5. **Mật khẩu bạn tự cung cấp.** Một số bí mật (secret) mà ứng dụng khai báo, ví dụ thông tin đăng nhập mail, do bạn đưa vào. Từ M2 bạn đặt chúng bằng `ingat secret set`. Ở M1, sau `init` (lệnh này tạo `secrets/env/` với quyền 0700) và trước lần triển khai đầu tiên, hãy đặt mỗi giá trị vào một tệp `INGAT_ROOT/instances/lite-test/secrets/env/<KEY>`, quyền 0600, không có dấu xuống dòng ở cuối. Chạy lại `init` sau đó vẫn giữ nguyên tệp đã có.
 
-Tên instance viết thường, tối đa 30 ký tự: bắt đầu bằng chữ, rồi chữ, số và gạch nối đơn, không ở đầu hay cuối. `ingat list` liệt kê các instance của host.
+**Tên bản cài** viết thường và tối đa 30 ký tự: bắt đầu bằng một chữ cái, sau đó là chữ cái, chữ số và dấu gạch nối đơn, không bao giờ có gạch nối ở đầu hay ở cuối. `ingat list` liệt kê các bản cài trên máy này.
 
-## 4. Deploy lần đầu
+## 4. Cài ứng dụng
 
 ```sh
 ingat deploy lite-test v1.2.0
 ```
 
-Nếu phiên bản này chưa được chuẩn bị, lệnh sẽ chuẩn bị trước: tải image của app (các tệp chương trình đã đóng gói) và ghi lại chính xác bản đã tải. Phần này không thay đổi gì ở app đang chạy nên không cần duyệt. Sau đó lệnh in kế hoạch: mỗi bước một dòng có đánh số, kèm mức rủi ro của bước (lớp) và bước được đánh dấu `forward point`, tức là điểm mà sau đó tool không còn hoàn tác đơn giản được nữa. Lệnh yêu cầu bạn gõ tên instance (`lite-test`) để duyệt. Khi chạy, mỗi bước in hai dòng có giờ (`started`, rồi `done`, hoặc giai đoạn bị lỗi), và dòng cuối là `operation <kết cục>`. Ý nghĩa từng kết cục:
+**Chuyện gì xảy ra.**
 
-- `completed`, exit 0: instance đang chạy; `next: ingat status lite-test`.
-- `paused`, exit 4: điểm dừng cài đặt của app. Thông điệp nói phải làm gì (với `fx-lite`: chép file bootstrap vào `INGAT_ROOT/inbox/`, chạy `ingat task lite-test bootstrap-config --input config=<file>`, hoàn tất thiết lập trên trình duyệt), rồi `ingat resume lite-test` và gõ tên lần nữa.
-- `failed-unchanged`, exit 3: một bước bị lỗi nhưng chưa có gì thay đổi vĩnh viễn: tool đã dừng lại mọi thứ nó khởi động, app và dữ liệu của bạn vẫn như trước. Đọc thông điệp, sửa nguyên nhân được nêu, rồi chạy lại đúng lệnh đó.
-- `failed-frozen`, exit 3: một bước bị lỗi sau khi app đã cập nhật dữ liệu (với `fx-lite`, lần cập nhật dữ liệu lúc cài chính là `forward point`). Tool giữ instance ở trạng thái tạm khóa ("đóng băng"): các writer, tức những phần của app có ghi vào dữ liệu, vẫn dừng để không gì bị hỏng. Dòng `next:` hiện lại chính lệnh `deploy` này; chạy lại sẽ tiếp tục từ dữ liệu mà lần cài đã tạo (mục 7).
-- `needs-review`, exit 4: có bước bị lỗi và tool không tự hoàn tác hết được, nên cần bạn xem xét. Trước khi chạy gì khác, hãy đọc các cảnh báo trong kết quả và `ingat history lite-test`, lệnh liệt kê mọi thao tác đã qua và kết cục của từng thao tác.
-- exit 130: hủy trước khi có tác động.
+1. Nếu phiên bản này chưa được chuẩn bị, Ingat chuẩn bị trước: tải các image của ứng dụng (các tệp chương trình đã đóng gói) và ghi lại chính xác những bản đã tải. Việc này không thay đổi gì ở ứng dụng đang chạy, nên không cần duyệt.
+2. Ingat in kế hoạch: mỗi bước một dòng có đánh số, kèm mức rủi ro của bước (lớp của nó). Một bước được đánh dấu `forward point`: sau bước đó, Ingat không còn hoàn tác thay đổi một cách đơn giản được nữa.
+3. Bạn gõ tên bản cài (`lite-test`) để duyệt.
+4. Trong lúc chạy, mỗi bước in hai dòng có giờ: `started`, rồi `done` (hoặc giai đoạn bị lỗi). Dòng cuối là `operation <outcome>`.
 
-`ingat deploy` phải do người gõ trong cửa sổ terminal, vì lệnh sẽ hỏi bạn gõ tên instance. Nếu một job theo lịch hoặc một script chạy nó, tool từ chối (exit 2) trước khi thay đổi hay tải bất cứ thứ gì.
+**Nó có thể kết thúc thế nào.**
 
-## 5. Vận hành hằng ngày
+| Kết cục | Exit | Ý nghĩa và việc cần làm |
+|---|---|---|
+| `completed` | 0 | Ứng dụng đang chạy. `next: ingat status lite-test`. |
+| `paused` | 4 | Điểm dừng cài đặt của ứng dụng. Thông báo nói bạn cần làm gì. Với `fx-lite`: chép tệp bootstrap vào `INGAT_ROOT/inbox/`, chạy `ingat task lite-test bootstrap-config --input config=<file>`, hoàn tất thiết lập trên trình duyệt, rồi chạy `ingat resume lite-test` và gõ tên lần nữa. |
+| `failed-unchanged` | 3 | Một bước bị lỗi, nhưng chưa có gì thay đổi lâu dài: Ingat đã dừng mọi thứ nó khởi động, ứng dụng và dữ liệu của bạn vẫn như trước. Đọc thông báo, sửa nguyên nhân được nêu, rồi chạy lại đúng lệnh đó. |
+| `failed-frozen` | 3 | Một bước bị lỗi sau khi ứng dụng đã cập nhật dữ liệu (với `fx-lite`, bước cập nhật dữ liệu lúc cài chính là `forward point`). Ingat đặt bản cài vào trạng thái tạm khóa ("frozen"): các phần ghi dữ liệu vẫn dừng để không gì bị hỏng. Dòng `next:` hiện lại chính lệnh `deploy` này; chạy lại sẽ tiếp tục từ dữ liệu mà lần cài đã tạo ra (mục 8). |
+| `needs-review` | 4 | Có gì đó bị lỗi và Ingat không tự hoàn tác hết được, nên cần đến bạn. Trước khi chạy gì khác, hãy đọc các cảnh báo in trong kết quả và `ingat history lite-test`, lệnh liệt kê mọi thao tác đã qua và kết cục của từng thao tác. |
+| đã hủy | 130 | Bạn đã hủy trước khi có gì thay đổi. |
+
+`ingat deploy` phải do một người gõ trong terminal, vì lệnh sẽ hỏi bạn gõ tên bản cài. Nếu một việc chạy theo lịch hoặc một script chạy nó, Ingat từ chối (exit 2) trước khi thay đổi hay tải bất cứ thứ gì.
+
+## 5. Việc hằng ngày
 
 | Việc | Lệnh | Ghi chú |
 |---|---|---|
-| Xem trạng thái | `ingat status lite-test` | Mỗi dòng bắt đầu bằng `attention:` là một việc cần bạn xem; khi đó lệnh kết thúc với mã thoát 5. Dòng cuối `next:` là lệnh cần chạy. `ingat status` không có tên thì hiện mọi instance trên máy này |
-| Kiểm tra sâu | `ingat doctor lite-test` | policy, gate, secret, trùng port, thư mục gốc |
-| Container, log, lịch sử, backup | `ingat ps lite-test`, `ingat logs lite-test app --since 1h`, `ingat history lite-test`, `ingat bundles lite-test` | chỉ đọc, không ghi gì |
-| Backup thủ công | `ingat backup lite-test --reason "trước khi đổi mail"` | Không cần duyệt. Trong lúc chạy, những phần của app có ghi dữ liệu sẽ dừng lại, trừ khi app backup được mọi kho dữ liệu ngay khi đang chạy (như `fx-lite`) |
-| Kiểm tra một bản backup | `ingat verify lite-test --latest` | Kiểm tra bản backup vẫn nguyên vẹn như lúc ghi (không thiếu, không hỏng tệp nào) và chạy các bước kiểm tra riêng của app trên bản đó |
-| Thử restore | `ingat verify lite-test --latest --restore-test` | Chứng minh bản backup thật sự khôi phục được: restore vào một bản sao tạm, tách riêng, không chạm được dữ liệu thật, kiểm tra rồi xóa bản sao đó. App đang chạy không bị ảnh hưởng. Bản backup sau đó được đánh dấu `restore-tested` |
-| Dọn bản backup cũ | `ingat prune lite-test --bundles`, rồi thêm `--apply` | Lệnh đầu chỉ liệt kê những bản cũ sẽ bị xóa theo các thiết lập giữ lại trong file instance (`keep_daily`, `keep_weekly`, `keep_monthly`); chưa xóa gì cho tới khi bạn thêm `--apply`. `scheduled backup` hằng đêm tự làm việc dọn này |
-| Dừng, chạy, khởi động lại | `ingat stop lite-test`, `ingat start lite-test`, `ingat restart lite-test` | class C: gõ tên mỗi lần |
-| Chạy một task do app cung cấp | `ingat task lite-test queue-status`, `… --arg job=<id>`, `… --input config=<file>` | Task chỉ đọc thì chạy không cần duyệt. Task có thay đổi app hoặc dữ liệu thì yêu cầu bạn gõ tên instance; mọi task `queue-*` và `bootstrap-*` của `fx-lite` đều thuộc loại này và từ chối chạy khi instance đang tạm khóa (đóng băng). Đặt tệp đầu vào trong `INGAT_ROOT/inbox/`. Task tương tác với bạn trong terminal thì chỉ hiện kết quả cho bạn, không lưu lại gì. Nếu một task có thay đổi app kết thúc theo cách app chưa khai báo (không phải mã `ok`, cũng không phải một lỗi đã khai báo), tool không biết task đã làm gì và báo `needs-review` (exit 4): hãy xem kết quả trước khi chạy gì khác |
-| Cập nhật | `ingat deploy lite-test v1.3.0` | xem bên dưới |
+| Xem trạng thái | `ingat status lite-test` | Mỗi dòng bắt đầu bằng `attention:` là một việc cần đến bạn; khi đó lệnh kết thúc với mã thoát 5. Dòng cuối, `next:`, là lệnh cần chạy. `ingat status` không kèm tên thì hiện mọi bản cài trên máy này. |
+| Kiểm tra kỹ hơn | `ingat doctor lite-test` | Kiểm tra thiết lập của ứng dụng theo các quy tắc an toàn, việc máy đã được duyệt cho thay đổi chưa, các tệp bí mật, trùng cổng và các thư mục. |
+| Container, log, các thao tác đã qua, các bản sao lưu | `ingat ps lite-test`, `ingat logs lite-test app --since 1h`, `ingat history lite-test`, `ingat bundles lite-test` | Những lệnh này chỉ đọc; chúng không bao giờ ghi gì. |
+| Sao lưu ngay | `ingat backup lite-test --reason "before the mail change"` | Không cần duyệt. Trong lúc chạy, các phần ghi dữ liệu sẽ dừng, trừ khi ứng dụng sao lưu được toàn bộ dữ liệu ngay khi đang chạy (như `fx-lite`). |
+| Kiểm tra một bản sao lưu | `ingat verify lite-test --latest` | Kiểm tra bản sao lưu vẫn đúng y như lúc được ghi (không thiếu, không hỏng tệp nào) và chạy các bước kiểm tra riêng của ứng dụng trên nó. |
+| Thử khôi phục một bản sao lưu | `ingat verify lite-test --latest --restore-test` | Chứng minh bản sao lưu thật sự khôi phục được: Ingat khôi phục nó vào một bản tạm, tách riêng của ứng dụng, không chạm được tới dữ liệu đang dùng của bạn, kiểm tra, rồi xóa bản tạm đó. Ứng dụng đang chạy không bị đụng tới. Sau đó bản sao lưu được đánh dấu `restore-tested`. |
+| Xóa bản sao lưu cũ | `ingat prune lite-test --bundles`, rồi chạy lại với `--apply` | Lệnh đầu chỉ liệt kê những bản cũ sẽ bị xóa theo các thiết lập giữ lại trong tệp bản cài của bạn (`keep_daily`, `keep_weekly`, `keep_monthly`); chưa có gì bị xóa cho tới khi bạn thêm `--apply`. `scheduled backup` hằng đêm tự làm việc dọn này. |
+| Dừng, chạy, khởi động lại | `ingat stop lite-test`, `ingat start lite-test`, `ingat restart lite-test` | Lớp C: gõ tên mỗi lần. |
+| Chạy một tác vụ do ứng dụng cung cấp | `ingat task lite-test queue-status`, `… --arg job=<id>`, `… --input config=<file>` | Xem bên dưới. |
+| Cập nhật lên phiên bản mới | `ingat deploy lite-test v1.3.0` | Mục 6. |
 
-**Cập nhật.** Nếu phiên bản mới chỉ đổi thiết lập, tool chỉ thay mới những phần của app có thiết lập thay đổi và khởi động chúng với thiết lập mới. Nếu nó đổi chương trình của một phần có ghi dữ liệu, hoặc bất kỳ phần nào của một app tự cập nhật dữ liệu mỗi lần khởi động, thì lần cập nhật này chạm vào dữ liệu, và kế hoạch hiện các bước an toàn: `Stop` các writer (những phần của app có ghi dữ liệu), tạo bản backup `pre-change`, kiểm tra bản đó, chạy bước cập nhật dữ liệu của app (`migrate`, đánh dấu `forward point`: sau bước này tool không còn quay lại đơn giản được), rồi chuyển app sang phiên bản mới. Từ bước `Stop` tới lúc chuyển xong, app không nhận thay đổi, nên hãy chọn giờ vắng để cập nhật. Nếu một bước sau `forward point` bị lỗi, thao tác kết thúc `failed-frozen` (exit 3): app bị tạm khóa với các writer đang dừng, và dòng `next:` hiện lại chính lệnh `deploy` đó. Chạy lại sẽ tiếp tục từ bản backup `pre-change` đã kiểm tra, với điều kiện bước cập nhật dữ liệu của app chạy hai lần vẫn an toàn (manifest khai báo `idempotent`, như của `fx-lite`) và bản backup đó vẫn còn trong danh sách và được đánh dấu `verified`. Nếu không, deploy từ chối với `frozen`; đường lùi khi đó là restore bản backup đó, việc tool này chưa làm được cho tới M2 (trong lúc chờ, `ingat status lite-test` chỉ bạn tới `history`).
+**Về các tác vụ của ứng dụng.**
 
-## 6. Job theo lịch
+- Tác vụ chỉ đọc thì chạy không cần duyệt. Tác vụ thay đổi ứng dụng hoặc dữ liệu thì yêu cầu bạn gõ tên bản cài. Mọi tác vụ `queue-*` và `bootstrap-*` của `fx-lite` đều thuộc loại này, và chúng từ chối chạy khi bản cài đang tạm khóa (frozen).
+- Đặt mọi tệp đầu vào trong `INGAT_ROOT/inbox/`.
+- Tác vụ trò chuyện với bạn trong terminal chỉ hiện kết quả cho bạn; không có gì từ nó được lưu lại.
+- Nếu một tác vụ thay đổi ứng dụng kết thúc theo cách ứng dụng không khai báo (không phải mã `ok`, cũng không phải một lỗi đã khai báo), Ingat không biết tác vụ đã làm gì. Nó báo `needs-review` (exit 4): hãy xem kết quả trước khi chạy gì khác.
 
-Tạo các job này trong bộ lập lịch của host bằng root, theo đường dẫn tuyệt đối của wrapper, gửi mail khi exit khác 0 (DSM Task Scheduler: "send run details by email only when the script terminates abnormally"):
+## 6. Cập nhật
+
+Chạy `ingat deploy lite-test v1.3.0`. Chuyện gì xảy ra tùy vào những gì phiên bản mới thay đổi.
+
+- **Chỉ thiết lập thay đổi.** Ingat chỉ thay những phần của ứng dụng có thiết lập thay đổi, và khởi động chúng với thiết lập mới.
+- **Dữ liệu bị đụng tới.** Đây là trường hợp phiên bản mới thay đổi chương trình của một phần ghi dữ liệu, hoặc của bất kỳ phần nào của một ứng dụng tự cập nhật dữ liệu mỗi lần khởi động. Khi đó kế hoạch hiện các bước an toàn:
+  1. `Stop` (dừng) các phần ghi dữ liệu;
+  2. tạo một bản sao lưu `pre-change` (trước thay đổi);
+  3. kiểm tra bản đó;
+  4. chạy bước cập nhật dữ liệu của ứng dụng (`migrate`, được đánh dấu `forward point`: sau bước này Ingat không còn quay lại đơn giản được nữa);
+  5. chuyển ứng dụng sang phiên bản mới.
+
+  Từ bước `Stop` cho tới lúc chuyển xong, ứng dụng không nhận thay đổi, nên hãy chọn lúc vắng người dùng.
+
+**Nếu một bước sau `forward point` bị lỗi**, thao tác kết thúc `failed-frozen` (exit 3). Ứng dụng bị tạm khóa với các phần ghi dữ liệu đang dừng, và dòng `next:` hiện lại chính lệnh `deploy` đó. Chạy lại sẽ tiếp tục từ bản sao lưu `pre-change` đã kiểm tra, với hai điều kiện:
+
+- bước cập nhật dữ liệu của ứng dụng chạy hai lần vẫn an toàn (manifest của nó ghi `idempotent`, như của `fx-lite`), và
+- bản sao lưu đó vẫn còn trong danh sách và được đánh dấu `verified`.
+
+Nếu không, lệnh deploy từ chối với `frozen`. Đường lui khi đó là khôi phục bản sao lưu đó, việc mà Ingat chưa làm được cho tới M2; trong lúc chờ, `ingat status lite-test` chỉ bạn tới `history`.
+
+## 7. Việc chạy hằng đêm và hằng tuần
+
+Tạo các việc này trong bộ lập lịch của máy bằng root, với đường dẫn đầy đủ của lệnh `ingat`, và gửi email khi một việc kết thúc với mã thoát khác 0. Trong DSM Task Scheduler, đánh dấu "send run details by email only when the script terminates abnormally".
 
 | Khi nào | Lệnh |
 |---|---|
 | hằng ngày 01:30 | `/srv/ingat/bin/ingat scheduled backup lite-test` |
-| hằng ngày 03:00 | sao chép `/srv/ingat-backups` ra ngoài host bằng công cụ của bạn (restic, borg, rsync; Hyper Backup trên DSM) |
+| hằng ngày 03:00 | chép `/srv/ingat-backups` sang nơi khác bằng công cụ của bạn (restic, borg, rsync; Hyper Backup trên NAS Synology) |
 | Chủ nhật 05:00 | `/srv/ingat/bin/ingat scheduled verify lite-test --latest --restore-test` |
 | mỗi giờ | `/srv/ingat/bin/ingat scheduled status` |
 
-`scheduled backup` in một dòng khi thành công và dọn các bản backup cũ theo các thiết lập giữ lại trong file instance (`keep_daily`, `keep_weekly`, `keep_monthly`). `scheduled status` im lặng (exit 0) chừng nào không có gì mới cần bạn chú ý; nó chỉ in và gửi mail khi một vấn đề xuất hiện hoặc hết, nên một vấn đề kéo dài nhiều ngày chỉ gửi mail một lần chứ không phải mỗi giờ. Nếu một job bắt đầu khi job khác còn đang chạy trên cùng instance, job thứ hai dừng với exit 2 và bạn nhận được mail: hãy đặt các job cách nhau đủ xa. Job theo lịch không bao giờ làm được việc cần bạn gõ duyệt; nó sẽ từ chối.
+Trên NAS Synology, lệnh là `/volume1/ingat/bin/ingat` và thư mục sao lưu là `/volume1/ingat-backups`.
 
-## 7. Khi có sự cố
+- `scheduled backup` in một dòng khi thành công, và xóa các bản sao lưu cũ theo các thiết lập giữ lại trong tệp bản cài của bạn (`keep_daily`, `keep_weekly`, `keep_monthly`).
+- `scheduled status` im lặng (exit 0) chừng nào không có gì mới cần bạn chú ý. Nó chỉ in ra, và vì thế bộ lập lịch mới gửi email cho bạn, khi một vấn đề xuất hiện hoặc hết đi. Một vấn đề kéo dài nhiều ngày chỉ gửi email cho bạn một lần, không phải mỗi giờ.
+- Nếu một việc bắt đầu khi việc khác còn đang chạy trên cùng bản cài, việc thứ hai dừng với exit 2 và bạn nhận được email. Hãy để các việc cách nhau đủ xa.
+- Một việc chạy theo lịch không bao giờ làm được điều gì cần bạn gõ duyệt; nó từ chối.
 
-- **Mất kết nối SSH giữa chừng.** Không có gì dừng lại. Mọi thao tác (deploy, backup, verify, thử restore, start, stop, restart, resume, abandon) chạy trong một bộ phận phụ riêng trên máy (một container riêng), không nằm trong cửa sổ SSH của bạn, nên vẫn chạy tiếp khi bạn mất kết nối. Kết nối lại và chạy `ingat attach lite-test` để theo dõi tới cuối. Ngoại lệ là task tương tác với bạn trong terminal (`bootstrap-config`, `bootstrap-new-code`): nó chạy từ cửa sổ của bạn, nên mất cửa sổ có thể để nó dang dở trong khi container của nó vẫn chạy. Sau khi mất kết nối, chạy lệnh kế tiếp; nếu lệnh trả lời `task-running`, chạy đúng lệnh `docker stop` nó in ra, rồi `ingat status lite-test`. Khi đang theo dõi một thao tác, Ctrl-C hỏi `[d]etach or [c]ancel?`: detach chỉ ngừng theo dõi, không bao giờ dừng thao tác; trong task terminal, Ctrl-C là yêu cầu dừng task.
-- **`status` hiện `attention: open-operation: operation <n> (<kind>) is interrupted` (hoặc `paused`), exit 5.** Một thao tác đã bắt đầu mà chưa xong: nó bị cắt ngang (interrupted) hoặc đang chờ bạn (paused). Bạn có hai lựa chọn, và dòng `next:` của `status` nêu lựa chọn đúng: `ingat resume lite-test` tiếp tục từ bước đầu tiên chưa xong; `ingat abandon lite-test` hoàn tác những gì có thể và đóng thao tác. (Nếu `ingat attach` thấy bộ phận phụ đã biến mất, nó kết thúc với exit 4 và cùng mã `open-operation`; khi đó `status` là lệnh cần chạy.) Một lần chuẩn bị, backup, kiểm tra hay thử restore bị cắt ngang sẽ được lệnh kế tiếp mở thao tác trên instance này (backup, deploy, start …) tự hoàn tác rồi đóng lại; trước đó `status` vẫn hiện nó. Nếu lần tự dọn đó không hoàn tác được hết, lệnh mới từ chối với `needs-review`: chạy `ingat status lite-test` và làm theo `next:`.
-- **`task-running`.** Một chương trình phụ (container task) do thao tác khởi động vẫn đang chạy, và tool sẽ không đi tiếp cho tới khi nó dừng. Chép và chạy đúng lệnh `docker stop <container>` mà thông điệp in ra, rồi `ingat resume lite-test` hoặc `ingat abandon lite-test` (`ingat status lite-test` nêu lệnh đúng).
-- **`failed-frozen`.** Instance đang tạm khóa: những phần của app có ghi dữ liệu đã dừng để không gì bị hỏng. Đường tiến là lệnh `deploy` mà kết quả đã in (cùng phiên bản, cùng bộ image đã chuẩn bị), theo điều kiện ở mục 5. Khi đang tạm khóa, `backup`, `start`, `stop`, `restart` và các task có thay đổi app hoặc dữ liệu từ chối chạy; task chỉ đọc, `verify` và thử restore vẫn chạy được.
-- **`uncertified`.** OS, kernel hoặc Engine đã đổi từ lần chứng nhận trước: `ingat selftest --host`.
-- **`changed-outside` hoặc `foreign`.** Có gì đó không phải Ingat (một người, một công cụ khác, hoặc các nút bấm của ứng dụng Docker) đã đổi, xóa hoặc thêm container, network, volume thuộc instance này. Không bao giờ dùng các nút thao tác project của ứng dụng hãng (ví dụ "Clean" hay "Delete" của Container Manager) lên project của Ingat. Tự gỡ bằng tay những gì bạn đã thêm; `ingat restart lite-test` đưa app về đúng như tool đã ghi nhận. Nếu image (tệp chương trình) của app đã mất, `ingat prepare lite-test <ref hiện tại>` tải lại đúng những bản đó.
-- **`not a tested combination`.** Xem mục 1: ghim Engine, hoặc chờ bản phát hành tool kiểm thử dòng mới.
-- **`… lock is busy: op …` hoặc `container ingat-exec-lite-test is still present`, exit 2.** Một lệnh khác vẫn đang làm việc trên instance này (hoặc, với `init` và `selftest --host`, trên máy này), và mỗi lúc chỉ một lệnh được làm. Chưa có gì thay đổi. `ingat attach lite-test` cho bạn theo dõi thao tác đang chạy; nếu không, chờ lệnh mà thông điệp nêu tên chạy xong rồi thử lại.
+## 8. Khi có sự cố
 
-Mỗi lệnh kết thúc bằng một con số gọi là mã thoát; bộ lập lịch và kết quả `--json` đều báo số này, và nó cho bạn biết ngay lệnh đã kết thúc thế nào. 0: xong. 1: tool từ chối và không thay đổi gì (ví dụ giá trị sai hoặc vướng một quy tắc an toàn); thông điệp nói lý do. 2: tool không chạy được và không thay đổi gì (ví dụ không kết nối được Docker, một lệnh khác còn đang bận, hoặc không có cửa sổ terminal để gõ duyệt). 3: lệnh dừng giữa chừng sau khi đã thay đổi một phần, nhưng app vẫn ở một trạng thái an toàn đã biết; `ingat status lite-test` cho biết việc cần làm tiếp. 4: thao tác cần bạn xem xét (đang tạm dừng, bị gián đoạn, tool không xác định được một bước đã kết thúc thế nào, hoặc việc dọn dẹp chưa xong); chạy `ingat status lite-test`. 5: một lần kiểm tra phát hiện điều đáng xem; không có gì lỗi. 130: bạn đã hủy trước khi có gì thay đổi. Thêm `--json` vào bất kỳ lệnh nào để nhận cùng câu trả lời dưới dạng một khối JSON cho máy đọc (hữu ích cho script).
+**Phiên SSH bị ngắt giữa một thao tác.** Không có gì dừng lại. Mọi thao tác (deploy, backup, verify, thử khôi phục, start, stop, restart, resume, abandon) chạy trong một bộ phận phụ riêng trên máy (container riêng của nó), không nằm trong cửa sổ SSH của bạn, nên nó chạy tiếp mà không cần bạn. Kết nối lại và chạy `ingat attach lite-test` để theo dõi tới cuối.
 
-## 8. Nâng cấp tool
+- Ngoại lệ là tác vụ trò chuyện với bạn trong terminal (`bootstrap-config`, `bootstrap-new-code`). Nó chạy từ cửa sổ của bạn, nên mất cửa sổ có thể để nó dang dở trong khi container của nó vẫn chạy. Sau khi bị ngắt, hãy chạy lệnh kế tiếp của bạn; nếu nó trả lời `task-running`, chạy đúng lệnh `docker stop` mà nó in ra, rồi `ingat status lite-test`.
+- Khi bạn đang theo dõi một thao tác, Ctrl-C hỏi `[d]etach or [c]ancel?`. Detach chỉ ngừng theo dõi, không bao giờ dừng thao tác. Trong một tác vụ terminal, Ctrl-C yêu cầu tác vụ dừng.
 
-Chạy lại `sh install.sh --version <mới>` bằng root. Lệnh tải phiên bản mới trước. Nếu còn thao tác nào chưa xong, lệnh dừng lại và giữ nguyên phiên bản bạn đang dùng (exit 2). Nếu không, nó chạy `ingat selftest --host` với phiên bản mới; nếu kiểm tra này thất bại, bạn vẫn giữ phiên bản đang dùng (exit 3). Nếu đạt, phiên bản mới trở thành lệnh `ingat` và script khởi động cũ được giữ ở `bin/ingat.prev`, là đường quay lại nếu phiên bản mới gặp trục trặc.
+**`status` hiện `attention: open-operation: operation <n> (<kind>) is interrupted` (hoặc `paused`), exit 5.** Một thao tác đã bắt đầu mà chưa xong: nó bị cắt ngang (interrupted) hoặc đang chờ bạn (paused). Bạn có hai lựa chọn, và dòng `next:` của `status` nêu lựa chọn đúng:
 
-## 9. Không bao giờ làm
+- `ingat resume lite-test` làm tiếp từ bước đầu tiên chưa xong;
+- `ingat abandon lite-test` hoàn tác những gì hoàn tác được và đóng thao tác lại.
 
-- `docker compose down -v`, `docker system prune`, `docker volume rm`, hoặc các nút thao tác project của ứng dụng hãng (như "Clean" hay "Delete") lên project của Ingat: những thứ này có thể phá hủy container, image hay dữ liệu vĩnh viễn, không gì lấy lại được. Ingat không ngăn được; sau đó nó chỉ có thể báo là có thứ đã mất hoặc đã bị đổi.
-- Sửa bất cứ thứ gì dưới `INGAT_ROOT` ngoài `instances/<i>/instance.toml`, các file secret bạn đặt ở M1, `inbox/` và `keys/`.
-- Đặt `INGAT_ROOT` hay store kiểu bind lên ổ mạng, thư mục đồng bộ, hoặc (trên DSM) shared folder.
-- Chạy hai phiên bản tool trên một host, hoặc tự chép thư mục gốc sang host khác (restore liên host sẽ có ở M4).
-- Tìm `--force` hay `--yes`: không có. Cách duy nhất để vượt một lời từ chối là lệnh mà thông điệp nêu tên.
+Nếu `ingat attach` thấy bộ phận phụ đã biến mất, nó kết thúc với exit 4 và cùng mã `open-operation`; khi đó hãy chạy `status`. Một lần chuẩn bị, sao lưu, kiểm tra hay thử khôi phục bị cắt ngang sẽ được lệnh kế tiếp mở một thao tác trên bản cài này (một lần sao lưu, một lần deploy, một lần start …) tự hoàn tác rồi đóng lại; trước đó `status` vẫn tiếp tục hiện nó. Nếu lần tự dọn đó không hoàn tác được hết, lệnh mới từ chối với `needs-review`: chạy `ingat status lite-test` và làm theo `next:` của nó.
+
+**`task-running`.** Một chương trình phụ (container tác vụ) do thao tác khởi động vẫn đang chạy, và Ingat sẽ không đi tiếp cho tới khi nó dừng. Chép và chạy đúng lệnh `docker stop <container>` mà thông báo in ra, rồi `ingat resume lite-test` hoặc `ingat abandon lite-test` (`ingat status lite-test` nêu lệnh đúng).
+
+**`failed-frozen`.** Bản cài đang tạm khóa: các phần ghi dữ liệu đã dừng để không gì bị hỏng. Đường đi tiếp là lệnh `deploy` mà kết quả đã in ra (cùng phiên bản, cùng các image đã chuẩn bị), theo các điều kiện ở mục 6. Khi đang tạm khóa, `backup`, `start`, `stop`, `restart` và các tác vụ thay đổi ứng dụng hoặc dữ liệu đều từ chối chạy; tác vụ chỉ đọc, `verify` và thử khôi phục vẫn chạy được.
+
+**`uncertified`.** Hệ điều hành, kernel hoặc Docker đã thay đổi kể từ lần kiểm tra máy trước. Chạy `ingat selftest --host`.
+
+**`changed-outside` hoặc `foreign`.** Có gì đó không phải Ingat (một người, một công cụ khác, hoặc các nút bấm của chính ứng dụng Docker) đã đổi, xóa hoặc thêm container, network hay volume trong project của bản cài này. Không bao giờ dùng các nút thao tác project của ứng dụng hãng (ví dụ "Clean" hay "Delete" trong Container Manager) lên một project của Ingat. Tự tay gỡ những gì bạn đã thêm; `ingat restart lite-test` đưa ứng dụng về đúng như Ingat đã ghi nhận. Nếu các image (tệp chương trình) của ứng dụng đã mất, `ingat prepare lite-test <current ref>` tải lại đúng những bản đó.
+
+**`not a tested combination`.** Xem mục 1: ghim Docker ở một phiên bản đã kiểm thử, hoặc chờ một bản phát hành Ingat kiểm thử phiên bản mới.
+
+**`… lock is busy: op …` hoặc `container ingat-exec-lite-test is still present`, exit 2.** Một lệnh khác vẫn đang làm việc trên bản cài này (hoặc, với `init` và `selftest --host`, trên máy này), và mỗi lúc chỉ một lệnh được làm. Chưa có gì thay đổi. `ingat attach lite-test` cho bạn theo dõi thao tác đang chạy; nếu không, chờ lệnh mà thông báo nêu tên chạy xong, rồi thử lại.
+
+## 9. Ý nghĩa các mã thoát
+
+Mỗi lệnh kết thúc bằng một con số, gọi là mã thoát. Bộ lập lịch và kết quả `--json` đều báo con số này, và nó cho bạn biết ngay lệnh đã kết thúc ra sao.
+
+| Exit | Ý nghĩa |
+|---|---|
+| 0 | Xong. |
+| 1 | Ingat từ chối và không thay đổi gì (ví dụ một giá trị sai hoặc vướng một quy tắc an toàn). Thông báo nói lý do. |
+| 2 | Ingat không chạy được và không thay đổi gì (ví dụ không kết nối được Docker, một lệnh khác còn đang bận, hoặc không có terminal để gõ duyệt). |
+| 3 | Lệnh dừng giữa chừng sau khi đã thay đổi một phần, nhưng để ứng dụng ở một trạng thái an toàn đã biết. `ingat status lite-test` cho biết việc cần làm tiếp. |
+| 4 | Thao tác cần bạn chú ý: nó đang tạm dừng, bị cắt ngang, Ingat không biết được một bước đã kết thúc ra sao, hoặc việc dọn dẹp của nó chưa xong. Chạy `ingat status lite-test`. |
+| 5 | Một lần kiểm tra phát hiện điều đáng xem; không có gì lỗi. |
+| 130 | Bạn đã hủy trước khi có gì thay đổi. |
+
+Thêm `--json` vào bất kỳ lệnh nào để nhận cùng câu trả lời dưới dạng một khối JSON cho máy đọc, tiện cho script.
+
+## 10. Nâng cấp Ingat
+
+Chạy lại `sh install.sh --version <new>` bằng root.
+
+1. Trước hết nó tải phiên bản mới.
+2. Nếu còn thao tác nào chưa xong, nó dừng lại và giữ nguyên phiên bản bạn đang có (exit 2).
+3. Nếu không, nó chạy `ingat selftest --host` với phiên bản mới. Nếu kiểm tra này thất bại, bạn vẫn giữ phiên bản đang có (exit 3).
+4. Nếu đạt, phiên bản mới trở thành lệnh `ingat`, và lệnh cũ được giữ ở `bin/ingat.prev`: đường quay lại của bạn nếu phiên bản mới gặp trục trặc.
+
+## 11. Không bao giờ làm
+
+- Không bao giờ chạy `docker compose down -v`, `docker system prune` hay `docker volume rm`, và không bao giờ dùng các nút thao tác project của ứng dụng hãng (như "Clean" hay "Delete"), lên một project của Ingat. Những thứ này có thể phá hủy container, image hay dữ liệu vĩnh viễn, và không gì lấy lại được. Ingat không ngăn được chúng; sau đó nó chỉ có thể báo rằng có thứ đã mất hoặc đã bị đổi.
+- Không bao giờ sửa bất cứ thứ gì dưới `INGAT_ROOT` ngoài `instances/<i>/instance.toml`, các tệp bí mật bạn đặt ở M1, `inbox/` và `keys/`.
+- Không bao giờ đặt `INGAT_ROOT` hay thư mục dữ liệu của một ứng dụng lên ổ mạng, thư mục đồng bộ, hoặc (trên NAS Synology) một shared folder.
+- Không bao giờ chạy hai phiên bản Ingat trên một máy, hay tự tay chép các thư mục của Ingat sang máy khác (khôi phục trên máy khác sẽ có ở M4).
+- Không bao giờ tìm `--force` hay `--yes`: không có. Cách duy nhất để vượt qua một lời từ chối là lệnh mà thông báo nêu tên.
