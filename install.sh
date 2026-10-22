@@ -118,5 +118,5 @@ echo "installed version $VERSION ($IMAGE) at $ROOT/bin/ingat"
 if [ -n "$UPGRADE" ]; then
   echo "Upgrade done: the new version already passed its check on this machine. The previous version is kept at $ROOT/bin/ingat.prev; run that file instead of ingat if the new version gives you trouble."
 else
-  echo "Next, once on this machine: run 'ingat host init' (it asks you to type this machine's name to confirm), then 'ingat selftest --host' to check that Ingat works here (this takes a few minutes). See docs/guide/operator-guide.md for the full first-time steps."
+  echo "Next, once on this machine: run 'ingat host init' (it asks you to type this machine's name, as the hostname command prints it, to confirm), then 'ingat selftest --host' to check that Ingat works here (this takes a few minutes). The full first-time steps are in the operator guide: https://github.com/LisaHQ/ingat/blob/v$VERSION/docs/guide/operator-guide.md"
 fi
